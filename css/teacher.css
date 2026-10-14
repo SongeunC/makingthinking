@@ -53,9 +53,10 @@
 
 /* 수직선 보드 */
 .board { padding: 8px 0; }
-.grid13 { display: grid; grid-template-columns: var(--label-w) repeat(11, minmax(0, 1fr)) var(--label-w); }
+/* 화살표 줄과 수직선 띠가 같은 칸 나눔을 쓰도록 틈(column-gap)도 똑같이 둔다 */
+.grid13 { display: grid; grid-template-columns: var(--label-w) repeat(11, minmax(0, 1fr)) var(--label-w); column-gap: 3px; }
 .lane { min-height: 70px; }
-.lane .col { display: flex; gap: 6px; padding: 0 3px; min-width: 0; }
+.lane .col { display: flex; gap: 6px; min-width: 0; }
 .lane.down .col { flex-direction: column; justify-content: flex-start; padding-top: 8px; }
 .lane.up .col { flex-direction: column-reverse; justify-content: flex-start; padding-bottom: 8px; }
 .lane-tag {
@@ -64,9 +65,8 @@
 }
 
 /* 가운데 색 띠 + 양 끝 화살촉 */
-.axis { align-items: stretch; column-gap: 0; }
-.axis .t { position: relative; height: 54px; background: var(--c); margin-right: 3px; }
-.axis .t.last { margin-right: 0; }
+.axis { align-items: stretch; }
+.axis .t { position: relative; height: 54px; background: var(--c); }
 .axis .t::after { /* 눈금 */
   content: ""; position: absolute; left: 50%; top: 50%; width: 3px; height: 18px; margin: -9px 0 0 -1.5px;
   background: rgba(0,0,0,.25); border-radius: 2px;
@@ -77,12 +77,12 @@
   font-size: clamp(15px, 1.6vw, 24px); line-height: 1.15; height: 76px; align-self: center;
 }
 .axis .end.left {
-  justify-content: flex-end; text-align: right; margin-right: 3px;
+  justify-content: flex-end; text-align: right;
   padding: 0 10px 0 calc(var(--label-w) * .3);
   clip-path: polygon(0 50%, 34% 0, 34% 15%, 100% 15%, 100% 85%, 34% 85%, 34% 100%);
 }
 .axis .end.right {
-  justify-content: flex-start; text-align: left; margin-left: 3px;
+  justify-content: flex-start; text-align: left;
   padding: 0 calc(var(--label-w) * .3) 0 10px;
   clip-path: polygon(0 15%, 66% 15%, 66% 0, 100% 50%, 66% 100%, 66% 85%, 0 85%);
 }
