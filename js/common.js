@@ -60,10 +60,21 @@ export function confirmDialog({ title, body = "", ok = "확인", cancel = "취�
         </div>
       </form>`;
     document.body.appendChild(dlg);
-    dlg.addEventListener("close", () => {
-      resolve(dlg.returnValue === "ok");
+    // 'close' 이벤트에만 기대지 않고 버튼을 누르는 즉시 결정한다
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      if (dlg.open) dlg.close();
       dlg.remove();
+      resolve(ok);
+    };
+    dlg.querySelector("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      finish(e.submitter?.value === "ok");
     });
+    dlg.addEventListener("cancel", (e) => { e.preventDefault(); finish(false); });
+    dlg.addEventListener("close", () => finish(dlg.returnValue === "ok"));
     dlg.showModal();
   });
 }
