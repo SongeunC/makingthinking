@@ -8,8 +8,9 @@
 </head>
 <body>
   <main class="wrap" id="app">
-    <section class="card" id="join-view">
-      <h1 style="font-size:24px;margin-bottom:16px">토론 수업 입장</h1>
+    <section id="join-view">
+      <div class="board-head"><h1 class="topic">토론 수업 입장</h1></div>
+      <div class="card">
       <form id="join-form" autocomplete="off">
         <label class="field">
           <span>접속 코드</span>
@@ -22,7 +23,8 @@
         <button class="btn btn-primary btn-block" id="join-btn">입장하기</button>
         <p class="error" id="join-error"></p>
       </form>
-      <p class="small muted" style="margin-top:20px">선생님은 <a href="teacher.html">교사 화면</a>으로 들어가세요.</p>
+      </div>
+      <p class="small" style="text-align:center;color:var(--chalk-soft)">선생님은 <a href="teacher.html">교사 화면</a>으로 들어가세요.</p>
     </section>
 
     <section id="room-view" hidden></section>

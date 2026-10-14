@@ -1,6 +1,6 @@
 import { app } from "./firebase.js";
 import {
-  POSITIONS, DEFAULT_LEFT, DEFAULT_RIGHT, esc, $, moveLabel, confirmDialog, toast,
+  POSITIONS, DEFAULT_LEFT, DEFAULT_RIGHT, esc, $, moveLabel, confirmDialog, toast, posStyle,
 } from "./common.js";
 import {
   getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut,
@@ -107,6 +107,7 @@ function renderHome() {
           <span class="muted small">코드 ${esc(r.code)} · ${r.round === 2 ? "2차 진행" : "1차"} · ${fmtDate(r.createdAt)}</span>
         </div>
         <div class="actions">
+          <button class="btn" data-copy="${esc(r.code)}">링크 복사</button>
           <a class="btn btn-primary" href="#room/${r.id}" style="text-decoration:none">열기</a>
           <button class="btn" data-del="${r.id}">삭제</button>
         </div>
@@ -117,6 +118,8 @@ function renderHome() {
   }));
 
   $("#rooms").addEventListener("click", async (e) => {
+    const copyCode = e.target.closest("[data-copy]")?.dataset.copy;
+    if (copyCode) return copyLink(copyCode);
     const id = e.target.closest("[data-del]")?.dataset.del;
     if (!id) return;
     const r = rooms.find((x) => x.id === id);
@@ -134,6 +137,28 @@ function renderHome() {
       toast("삭제하지 못했습니다.");
     }
   });
+}
+
+// 학생 입장 링크. 코드가 미리 채워진다.
+function joinUrl(code) {
+  return new URL(`./?code=${code}`, location.href).href;
+}
+
+async function copyLink(code) {
+  const url = joinUrl(code);
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("학생 입장 링크를 복사했습니다.");
+  } catch {
+    prompt("아래 링크를 복사하세요.", url);
+  }
+}
+
+function qrSvg(text) {
+  const qr = window.qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  return qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
 }
 
 function fmtDate(ts) {
@@ -286,6 +311,8 @@ async function onRoomClick(e, s) {
     s.manage = !s.manage;
   } else if (act === "qr") {
     return showQR(s.room);
+  } else if (act === "copy") {
+    return copyLink(s.room.code);
   } else if (act === "again") {
     const ok = await confirmDialog({
       title: "다시 생각(2차)을 시작할까요?",
@@ -356,7 +383,10 @@ function draw(s) {
           <span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>
           <h1>${esc(room.topic)}</h1>
         </div>
-        <button class="code-chip" data-act="qr"><small>접속 코드 · QR</small><b>${esc(room.code)}</b></button>
+        <div class="qr-mini">
+          <button class="qr-mini-img" data-act="qr" title="크게 보기">${qrSvg(joinUrl(room.code))}</button>
+          <button class="btn btn-small" data-act="copy">링크 복사</button>
+        </div>
       </header>
 
       <div class="t-tools">
@@ -377,9 +407,9 @@ function draw(s) {
       <div class="board">
         ${showUp ? lane(s, 2, "up") : ""}
         <div class="grid13 axis">
-          <div class="end left">${esc(room.leftLabel)}</div>
-          ${POSITIONS.map((p, i) => `<div class="t ${p === 0 ? "zero" : ""} ${i === 0 ? "first" : ""} ${i === 10 ? "last" : ""}"></div>`).join("")}
-          <div class="end right">${esc(room.rightLabel)}</div>
+          <div class="end left" style="${posStyle(-5)}">${esc(room.leftLabel)}</div>
+          ${POSITIONS.map((p, i) => `<div class="t ${p === 0 ? "zero" : ""} ${i === 10 ? "last" : ""}" style="${posStyle(p)}"></div>`).join("")}
+          <div class="end right" style="${posStyle(5)}">${esc(room.rightLabel)}</div>
         </div>
         ${showDown ? lane(s, 1, "down") : ""}
       </div>
@@ -396,7 +426,7 @@ function lane(s, r, dir) {
       .map((p) => {
         const open = s.expanded.has(p.uid);
         const key = `${p.uid}:${r}`;
-        return `<div class="item ${open ? "expanded" : ""}">
+        return `<div class="item ${open ? "expanded" : ""}" style="${posStyle(pos)}">
           <button class="arrow" data-uid="${p.uid}" title="${esc(label(s, p))}">${esc(label(s, p))}</button>
           ${open ? `<div class="reason ${s.full.has(key) ? "full" : ""}" data-key="${key}">${esc(p[`r${r}`].reason)}</div>` : ""}
         </div>`;
@@ -424,19 +454,22 @@ function markClamped() {
 // ---------- QR ----------
 
 function showQR(room) {
-  const url = new URL(`index.html?code=${room.code}`, location.href).href;
-  const qr = window.qrcode(0, "M");
-  qr.addData(url);
-  qr.make();
+  const url = joinUrl(room.code);
   const ov = document.createElement("div");
   ov.className = "qr-overlay";
   ov.innerHTML = `
     <div class="qr-card">
-      <div class="qr">${qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true })}</div>
-      <div class="big-code">${esc(room.code)}</div>
-      <p class="url">${esc(url)}</p>
-      <button class="btn">닫기</button>
+      <div class="qr">${qrSvg(url)}</div>
+      <p class="url"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a></p>
+      <p class="code-line">접속 코드 <b>${esc(room.code)}</b></p>
+      <div class="qr-actions">
+        <button class="btn btn-primary" data-copy>링크 복사</button>
+        <button class="btn" data-close>닫기</button>
+      </div>
     </div>`;
-  ov.addEventListener("click", () => ov.remove());
+  ov.addEventListener("click", (e) => {
+    if (e.target.closest("[data-copy]")) return copyLink(room.code);
+    if (e.target === ov || e.target.closest("[data-close]")) ov.remove();
+  });
   document.body.appendChild(ov);
 }

@@ -5,6 +5,20 @@ export const SDK = "https://www.gstatic.com/firebasejs/11.10.0";
 // 눈금: 가운데 0, 좌우 5칸씩
 export const POSITIONS = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
 
+// 칸 색: 왼쪽 끝 진분홍 → 분홍 → 가운데 노랑 → 하늘 → 오른쪽 끝 파랑
+const POS_COLORS = {
+  "-5": ["#d94f78", "#fff"], "-4": ["#e2718f", "#fff"], "-3": ["#eb93a8", "#3a2230"],
+  "-2": ["#f2b3c0", "#3a2230"], "-1": ["#f3cfb4", "#3a2a20"], "0": ["#f2e2a2", "#3a3320"],
+  "1": ["#cfe3c8", "#22332a"], "2": ["#abd2e4", "#1d3040"], "3": ["#86bce0", "#1d3040"],
+  "4": ["#5fa5d9", "#fff"], "5": ["#3a8bd0", "#fff"],
+};
+
+// style 속성에 넣을 문자열. --c: 배경색, --t: 글자색
+export function posStyle(p) {
+  const [c, t] = POS_COLORS[String(p)] ?? ["#ccc", "#222"];
+  return `--c:${c};--t:${t}`;
+}
+
 export const DEFAULT_LEFT = "매우 찬성";
 export const DEFAULT_RIGHT = "매우 반대";
 

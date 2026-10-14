@@ -1,5 +1,5 @@
 import { app } from "./firebase.js";
-import { POSITIONS, esc, $, cleanName, confirmDialog } from "./common.js";
+import { POSITIONS, esc, $, cleanName, confirmDialog, posStyle } from "./common.js";
 import {
   initializeAuth, inMemoryPersistence, signInAnonymously,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
@@ -122,12 +122,10 @@ function render() {
   state.viewKey = key;
 
   const head = `
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
-        <span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>
-        <span class="muted small">나: <b style="color:var(--ink)">${esc(me.name)}</b></span>
-      </div>
-      <h1 class="topic">${esc(room.topic)}</h1>
+    <div class="board-head">
+      <span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>
+      <h1 class="topic" style="margin-top:10px">${esc(room.topic)}</h1>
+      <div class="me">나: ${esc(me.name)}</div>
     </div>`;
 
   if (mine) {
@@ -169,14 +167,14 @@ function render() {
 
 function picker(room, selPos, { locked = false, ghost = null } = {}) {
   const ticks = POSITIONS.map((p) => `
-    <button type="button" class="tick ${p === 0 ? "zero" : ""} ${p === selPos ? "sel" : ""}"
+    <button type="button" class="tick ${p === 0 ? "zero" : ""} ${p === selPos ? "sel" : ""}" style="${posStyle(p)}"
       data-pos="${p}" ${locked ? "disabled" : ""} aria-label="${positionWords(room, p)}">
       <span class="dot"></span>
       ${ghost === p ? `<span class="ghost">1차</span>` : ""}
     </button>`).join("");
   return `
     <div class="picker">
-      <div class="picker-ends"><span>◀ ${esc(room.leftLabel)}</span><span>${esc(room.rightLabel)} ▶</span></div>
+      <div class="picker-ends"><span style="${posStyle(-5)}">${esc(room.leftLabel)}</span><span style="${posStyle(5)}">${esc(room.rightLabel)}</span></div>
       <div class="ticks ${locked ? "locked" : ""}">${ticks}</div>
     </div>`;
 }

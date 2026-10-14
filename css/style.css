@@ -1,121 +1,151 @@
+@import url("https://fonts.googleapis.com/css2?family=Jua&display=swap");
+
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --ink: #1d2330;
-  --ink-soft: #5b6475;
-  --line: #d7dbe3;
-  --primary: #2f5bd8;
-  --primary-ink: #ffffff;
-  --danger: #c93a3a;
-  --r1: #2f6fd8;        /* 1차 화살표 */
-  --r1-soft: #e3ecfb;
-  --r2: #e07a1f;        /* 2차 화살표 */
-  --r2-soft: #fcefe2;
-  --done: #1f9d61;
-  --done-soft: #e2f5ec;
-  --radius: 10px;
-  --label-w: clamp(64px, 9vw, 150px);
-  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
-  color: var(--ink);
+  --board: #2f5e4b;        /* 칠판 */
+  --board-deep: #264f3f;
+  --chalk: #fdfaf0;        /* 칠판 위 글씨 */
+  --chalk-soft: #cfe0d6;
+  --paper: #fbf8ef;        /* 카드 */
+  --ink: #2a2f2c;
+  --ink-soft: #66706a;
+  --line: #e2dccb;
+  --accent: #f4d465;       /* 노랑 분필 */
+  --accent-ink: #3a3320;
+  --danger: #d94f4f;
+  --done: #2f9a62;
+  --done-soft: #e3f4ea;
+  --radius: 12px;
+  --label-w: clamp(78px, 10vw, 170px);
+  --font-ui: "Jua", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-text: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  font-family: var(--font-ui);
+  color: var(--chalk);
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--bg); min-height: 100vh; -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--board);
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,.07), transparent 60%);
+  min-height: 100vh; -webkit-text-size-adjust: 100%;
+}
 button { font: inherit; cursor: pointer; }
-input, textarea { font: inherit; color: inherit; }
-h1, h2, h3 { margin: 0; }
+input, textarea { font-family: var(--font-text); color: var(--ink); }
+h1, h2, h3 { margin: 0; font-weight: 400; }
+a { color: var(--accent); }
 [hidden] { display: none !important; }
 
 .wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 48px; }
 .card {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 20px; margin-bottom: 16px;
+  background: var(--paper); color: var(--ink); border-radius: var(--radius);
+  padding: 20px; margin-bottom: 16px; box-shadow: 0 3px 0 rgba(0,0,0,.18);
 }
+.card a { color: #2d6fb0; }
 .muted { color: var(--ink-soft); }
-.small { font-size: 14px; }
+.small { font-size: 15px; }
 .error { color: var(--danger); min-height: 1.4em; margin: 8px 0 0; }
 
 .field { display: block; margin-bottom: 14px; }
-.field > span { display: block; font-weight: 600; margin-bottom: 6px; }
+.field > span { display: block; font-size: 17px; margin-bottom: 6px; }
 .field input, .field textarea {
-  width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px;
+  width: 100%; padding: 12px 14px; border: 2px solid var(--line); border-radius: 10px;
   background: #fff; font-size: 17px;
 }
+.field input:focus, .field textarea:focus { outline: none; border-color: #86bce0; }
 .field textarea { min-height: 110px; resize: vertical; line-height: 1.5; }
 .row { display: flex; gap: 12px; }
-.row > * { flex: 1; }
+.row > * { flex: 1; min-width: 0; }
 
 .btn {
-  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-  border-radius: 8px; padding: 10px 16px; font-size: 16px; font-weight: 600;
-  min-height: 44px;
+  border: 2px solid rgba(255,255,255,.75); background: transparent; color: var(--chalk);
+  border-radius: 10px; padding: 8px 16px; font-size: 18px; min-height: 44px;
 }
+.card .btn, .dlg .btn { border-color: var(--line); color: var(--ink); background: #fff; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
-.btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-.btn-block { width: 100%; font-size: 18px; padding: 14px; }
-.btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn-primary, .card .btn-primary, .dlg .btn-primary {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+}
+.btn-danger, .dlg .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn-block { width: 100%; font-size: 20px; padding: 12px; }
+.btn.on { background: var(--chalk); border-color: var(--chalk); color: var(--board-deep); }
 
 /* ---------- 대화상자, 알림 ---------- */
-.dlg { border: none; border-radius: 14px; padding: 0; width: min(440px, calc(100vw - 32px)); }
-.dlg::backdrop { background: rgba(20, 24, 33, .45); }
+.dlg {
+  border: none; border-radius: 16px; padding: 0; width: min(460px, calc(100vw - 32px));
+  background: var(--paper); color: var(--ink);
+}
+.dlg::backdrop { background: rgba(10, 25, 18, .55); }
 .dlg form { padding: 22px; }
-.dlg h2 { font-size: 20px; margin-bottom: 12px; }
-.dlg-body { color: var(--ink-soft); line-height: 1.5; }
+.dlg h2 { font-size: 22px; margin-bottom: 12px; }
+.dlg-body { color: var(--ink-soft); line-height: 1.5; font-family: var(--font-text); }
 .dlg-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-  background: var(--ink); color: #fff; padding: 12px 18px; border-radius: 10px; z-index: 100;
+  background: var(--paper); color: var(--ink); padding: 12px 18px; border-radius: 10px; z-index: 100;
+  box-shadow: 0 4px 16px rgba(0,0,0,.3);
 }
 
-/* ---------- 학생용 눈금 선택 ---------- */
+/* ---------- 학생용 눈금 선택: 양 끝이 화살촉인 색 띠 ---------- */
 .picker { margin: 8px 0 4px; }
-.picker-ends { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; margin-bottom: 8px; }
-.picker-ends span:last-child { text-align: right; }
+.picker-ends { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 16px; }
+.picker-ends span {
+  background: var(--c); color: var(--t); padding: 3px 10px; border-radius: 8px;
+}
 .ticks {
-  position: relative; display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px;
+  position: relative; display: grid; grid-template-columns: repeat(11, 1fr); gap: 2px;
+  padding: 0 16px;
 }
-.ticks::before { /* 가로 수직선 */
-  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px;
-  background: var(--ink); border-radius: 2px;
+.ticks::before, .ticks::after { /* 양 끝 화살촉 */
+  content: ""; position: absolute; top: 50%; width: 18px; height: 52px; margin-top: -26px;
 }
+.ticks::before { left: 0; background: #d94f78; clip-path: polygon(0 50%, 100% 0, 100% 100%); }
+.ticks::after { right: 0; background: #3a8bd0; clip-path: polygon(0 0, 100% 50%, 0 100%); }
 .tick {
-  position: relative; height: 72px; border: none; background: transparent; padding: 0;
+  position: relative; height: 78px; border: none; background: transparent; padding: 0;
   display: flex; align-items: center; justify-content: center; touch-action: manipulation;
 }
-.tick::after { /* 눈금 막대 */
-  content: ""; width: 4px; height: 26px; background: var(--ink); border-radius: 2px;
+.tick::before { /* 색 띠 한 칸 */
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 36px; margin-top: -18px;
+  background: var(--c);
 }
-.tick.zero::after { height: 40px; }
+.tick::after { /* 눈금 */
+  content: ""; position: relative; width: 3px; height: 16px; background: rgba(0,0,0,.28); border-radius: 2px;
+}
+.tick.zero::after { height: 26px; background: rgba(0,0,0,.45); }
 .tick .dot {
-  position: absolute; width: min(34px, 92%); aspect-ratio: 1; border-radius: 50%;
-  background: var(--primary); box-shadow: 0 0 0 4px #fff, 0 2px 6px rgba(0,0,0,.25);
+  position: absolute; z-index: 1; width: min(30px, 96%); aspect-ratio: 1; border-radius: 50%;
+  background: #fff; border: 5px solid var(--board-deep); box-shadow: 0 2px 6px rgba(0,0,0,.35);
   display: none;
 }
+.tick.sel::before { top: 4px; bottom: 4px; height: auto; margin: 0; border-radius: 6px; }
 .tick.sel .dot { display: block; }
 .tick .ghost {
-  position: absolute; bottom: 0; font-size: 11px; font-weight: 700; color: var(--r1);
-  white-space: nowrap;
+  position: absolute; bottom: -4px; font-size: 13px; color: var(--ink); white-space: nowrap;
 }
 .tick .ghost::before { content: "▲"; display: block; text-align: center; line-height: 1; }
 .tick:disabled { cursor: default; }
-.ticks.locked .tick .dot { background: var(--done); }
 
 .ref-box {
-  border-left: 4px solid var(--r1); background: var(--r1-soft); padding: 10px 14px; border-radius: 6px;
-  margin: 12px 0; white-space: pre-wrap; line-height: 1.5;
+  border-left: 5px solid #86bce0; background: #eef5fa; padding: 10px 14px; border-radius: 8px;
+  margin: 16px 0 12px; white-space: pre-wrap; line-height: 1.5; font-family: var(--font-text);
 }
-.ref-box b { display: block; margin-bottom: 4px; white-space: normal; }
+.ref-box b { display: block; margin-bottom: 4px; white-space: normal; font-family: var(--font-ui); font-weight: 400; }
 .done-box {
-  background: var(--done-soft); border: 1px solid var(--done); color: #155f3c;
-  padding: 14px; border-radius: 8px; font-weight: 600;
+  background: var(--done-soft); border: 2px solid var(--done); color: #1d6b43;
+  padding: 14px; border-radius: 10px; font-size: 18px;
 }
-.my-reason { white-space: pre-wrap; line-height: 1.6; padding: 12px 14px; background: #f1f3f6; border-radius: 8px; }
-.topic { font-size: 22px; line-height: 1.4; margin-bottom: 6px; }
+.my-reason {
+  white-space: pre-wrap; line-height: 1.6; padding: 12px 14px; background: #f1ede1; border-radius: 10px;
+  font-family: var(--font-text);
+}
+.topic { font-size: 26px; line-height: 1.4; margin-bottom: 4px; }
 .badge {
-  display: inline-block; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
-  background: var(--r1-soft); color: var(--r1);
+  display: inline-block; font-size: 15px; padding: 3px 12px; border-radius: 999px;
+  background: #f2b3c0; color: #3a2230;
 }
-.badge.r2 { background: var(--r2-soft); color: var(--r2); }
-.code-input { letter-spacing: .3em; font-size: 26px !important; text-align: center; }
+.badge.r2 { background: #abd2e4; color: #1d3040; }
+.code-input { letter-spacing: .3em; font-size: 28px !important; text-align: center; }
+
+/* 칠판 위 제목 영역 */
+.board-head { color: var(--chalk); text-align: center; padding: 6px 4px 18px; }
+.board-head .me { color: var(--chalk-soft); font-size: 16px; margin-top: 8px; }
