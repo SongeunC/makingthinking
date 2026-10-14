@@ -3,6 +3,7 @@ import {
   POSITIONS, DEFAULT_LEFT, DEFAULT_RIGHT, esc, $, moveLabel, confirmDialog, toast, posStyle,
   cardColor, likeCount,
 } from "./common.js";
+import { countWords, layoutCloud } from "./wordcloud.js";
 import {
   getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
@@ -231,6 +232,10 @@ function openRoom(roomId) {
     cards: [],               // 의견 카드, 낸 순서대로
     showFirst: false,        // 2차 때 1차 화살표 함께 보기
     manage: false,           // 참여자 정리(삭제) 모드
+    view: "main",            // main | cloud(워드클라우드)
+    cloudSrc: null,          // cards | reason
+    cloudRound: null,        // 1 | 2 | "all"
+    excluded: loadExcluded(roomId),
   };
 
   root.innerHTML = `<p class="wrap muted">불러오는 중…</p>`;
@@ -286,6 +291,25 @@ async function onRoomClick(e, s) {
   const t = e.target;
   if (!s.room) return;
 
+  const word = t.closest(".cloud-word, [data-restore]");
+  if (word) {
+    if (word.dataset.restore === "*") s.excluded.clear();
+    else if (word.dataset.restore) s.excluded.delete(word.dataset.restore);
+    else s.excluded.add(word.dataset.word);
+    saveExcluded(s.roomId, s.excluded);
+    return draw(s);
+  }
+  const src = t.closest("[data-src]");
+  if (src) {
+    s.cloudSrc = src.dataset.src;
+    return draw(s);
+  }
+  const rnd = t.closest("[data-rnd]");
+  if (rnd) {
+    s.cloudRound = rnd.dataset.rnd === "all" ? "all" : Number(rnd.dataset.rnd);
+    return draw(s);
+  }
+
   const cardAct = t.closest("[data-card-act]");
   if (cardAct) return onCardAction(s, cardAct.dataset.cardAct, cardAct.dataset.uid);
 
@@ -330,6 +354,12 @@ async function onRoomClick(e, s) {
     });
     if (ok) await roomUpdate(s, { stage: "cards" });
     return;
+  } else if (act === "cloud") {
+    s.view = "cloud";
+    s.cloudSrc ??= s.room.stage === "cards" ? "cards" : "reason";
+    s.cloudRound ??= s.room.round === 2 ? "all" : 1;
+  } else if (act === "main") {
+    s.view = "main";
   } else if (act === "toline") {
     return roomUpdate(s, { stage: "line" });
   } else if (act === "puball") {
@@ -431,6 +461,7 @@ function cardLabel(s, c) {
 function draw(s) {
   const { room, people } = s;
   if (!room) return;
+  if (s.view === "cloud") return drawCloud(s);
   const round = room.round;
   const cardStage = room.stage === "cards";
   const cardBy = new Map(s.cards.map((c) => [c.uid, c]));
@@ -473,12 +504,14 @@ function draw(s) {
           <button class="btn" data-act="toline">← 수직선</button>
           <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
           <button class="btn btn-primary" data-act="puball">전체 공개</button>
+          <button class="btn" data-act="cloud">워드클라우드</button>
         ` : `
           <button class="btn ${s.allMode ? "on" : ""}" data-act="all">모두 보기</button>
           <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
           ${round === 1
             ? `<button class="btn btn-primary" data-act="again">다시 생각</button>`
             : `<button class="btn ${s.showFirst ? "on" : ""}" data-act="first">1차 보기</button>`}
+          <button class="btn" data-act="cloud">워드클라우드</button>
           <button class="btn" data-act="next">다음: 의견 카드 →</button>
         `}
         <span class="spacer"></span>
@@ -503,6 +536,73 @@ function draw(s) {
     </div>`;
 
   markClamped();
+}
+
+// ---------- 워드클라우드 ----------
+
+function cloudTexts(s) {
+  if (s.cloudSrc === "cards") return s.cards.filter((c) => c.status !== "hidden").map((c) => c.text);
+  const rounds = s.cloudRound === "all" ? [1, 2] : [s.cloudRound];
+  return s.people.flatMap((p) => rounds.map((r) => p[`r${r}`]?.reason).filter(Boolean));
+}
+
+function drawCloud(s) {
+  const texts = cloudTexts(s);
+  const all = countWords(texts);
+  const entries = all.filter(([w]) => !s.excluded.has(w)).slice(0, 70);
+  const pick = (attr, val, cur, text) =>
+    `<button class="btn ${String(cur) === String(val) ? "on" : ""}" ${attr}="${val}">${text}</button>`;
+
+  root.innerHTML = `
+    <div class="t-room">
+      <header class="t-top">
+        <button class="btn" data-act="main">← 돌아가기</button>
+        <div class="t-title">
+          <span class="badge">워드클라우드</span>
+          <h1>${esc(s.room.topic)}</h1>
+        </div>
+      </header>
+
+      <div class="t-tools">
+        ${pick("data-src", "cards", s.cloudSrc, "의견 카드")}
+        ${pick("data-src", "reason", s.cloudSrc, "수직선 이유")}
+        ${s.cloudSrc === "reason" ? `
+          <span class="tool-sep"></span>
+          ${pick("data-rnd", 1, s.cloudRound, "1차")}
+          ${pick("data-rnd", 2, s.cloudRound, "2차")}
+          ${pick("data-rnd", "all", s.cloudRound, "1차+2차")}` : ""}
+        <span class="spacer"></span>
+        <span class="count">글 ${texts.length}개 · 단어 ${all.length}개</span>
+      </div>
+
+      <div class="cloud" id="cloud">
+        ${entries.length ? "" : `<p class="wall-empty" style="padding-top:120px">아직 모인 글이 없습니다.</p>`}
+      </div>
+      <p class="cloud-help">단어를 누르면 워드클라우드에서 뺍니다.</p>
+
+      ${s.excluded.size ? `
+        <div class="excluded">
+          <span>뺀 단어</span>
+          ${[...s.excluded].map((w) => `<button class="ex-word" data-restore="${esc(w)}" title="되돌리기">${esc(w)} ↺</button>`).join("")}
+          <button class="ex-word all" data-restore="*">모두 되돌리기</button>
+        </div>` : ""}
+    </div>`;
+
+  if (entries.length) layoutCloud($("#cloud"), entries);
+}
+
+function loadExcluded(roomId) {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(`cloud-excluded:${roomId}`) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveExcluded(roomId, set) {
+  try {
+    localStorage.setItem(`cloud-excluded:${roomId}`, JSON.stringify([...set]));
+  } catch { /* 저장이 안 되는 환경이면 이번 화면에서만 유지 */ }
 }
 
 // 의견 카드 벽(교사용). 모든 카드가 보이고, 공개 전·숨김 카드는 흐리게 표시한다.

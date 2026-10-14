@@ -159,3 +159,23 @@
   background: #f1ede1; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; color: var(--ink);
   white-space: pre-wrap; max-height: 160px; overflow: auto;
 }
+
+/* 워드클라우드 */
+.tool-sep { width: 2px; height: 30px; background: rgba(255,255,255,.35); margin: 0 4px; }
+.cloud {
+  position: relative; height: clamp(360px, 62vh, 760px); border-radius: var(--radius);
+  background: rgba(0,0,0,.14); overflow: hidden;
+}
+.cloud-word {
+  position: absolute; border: none; background: transparent; padding: 0 4px; line-height: 1.1;
+  font-family: var(--font-ui); white-space: nowrap; cursor: pointer;
+  text-shadow: 0 2px 0 rgba(0,0,0,.18);
+}
+.cloud-word:hover { text-decoration: line-through; opacity: .7; }
+.cloud-help { color: var(--chalk-soft); font-size: 15px; text-align: center; margin: 10px 0; }
+.excluded { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--chalk-soft); }
+.ex-word {
+  border: 1px dashed rgba(255,255,255,.5); background: transparent; color: var(--chalk);
+  border-radius: 8px; padding: 3px 10px; font-size: 15px;
+}
+.ex-word.all { border-style: solid; }
