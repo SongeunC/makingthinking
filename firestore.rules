@@ -1,0 +1,121 @@
+rules_version = '2';
+
+// 토론 수업 도우미 Firestore 보안 규칙
+//
+// 데이터 구조
+//   codes/{6자리코드}                     { roomId, ownerUid }
+//   rooms/{roomId}                        { ownerUid, topic, leftLabel, rightLabel, code, round(1|2), createdAt }
+//   rooms/{roomId}/participants/{uid}     { name, joinedAt, r1?: {pos, reason, at}, r2?: {...} }
+//   rooms/{roomId}/names/{이름}            { uid }   같은 이름 중복 방지용
+//
+// 교사: 구글 로그인. 학생: 익명 로그인(새로 들어올 때마다 새 uid).
+// 학생은 자기 participants 문서만 읽을 수 있다. 다른 학생의 선택·이유는 읽을 수 없다.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isTeacher() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+
+    function roomDoc(roomId) {
+      return get(/databases/$(database)/documents/rooms/$(roomId));
+    }
+
+    function isOwner(roomId) {
+      return isTeacher() && roomDoc(roomId).data.ownerUid == request.auth.uid;
+    }
+
+    function validAnswer(a) {
+      return a is map
+        && a.keys().hasOnly(['pos', 'reason', 'at'])
+        && a.keys().hasAll(['pos', 'reason', 'at'])
+        && a.pos is int && a.pos >= -5 && a.pos <= 5
+        && a.reason is string && a.reason.trim().size() > 0
+        && a.at == request.time;
+    }
+
+    function validLabels(d) {
+      return d.topic is string && d.topic.size() > 0 && d.topic.size() <= 500
+        && d.leftLabel is string && d.leftLabel.size() > 0 && d.leftLabel.size() <= 40
+        && d.rightLabel is string && d.rightLabel.size() > 0 && d.rightLabel.size() <= 40;
+    }
+
+    // 접속 코드 → 방 찾기. 목록 조회는 막고 코드를 아는 사람만 한 건 읽는다.
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow create: if isTeacher()
+        && code.matches('^[0-9]{6}$')
+        && request.resource.data.keys().hasOnly(['roomId', 'ownerUid'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.ownerUid == request.auth.uid;
+      allow delete: if isTeacher() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /rooms/{roomId} {
+      // 학생도 주제·라벨·라운드를 알아야 하므로 한 건 읽기는 허용
+      allow get: if signedIn();
+      allow list: if isTeacher() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isTeacher()
+        && request.resource.data.keys().hasOnly(['ownerUid', 'topic', 'leftLabel', 'rightLabel', 'code', 'round', 'createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.round == 1
+        && request.resource.data.createdAt == request.time
+        && validLabels(request.resource.data);
+      allow update: if isTeacher()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['round', 'topic', 'leftLabel', 'rightLabel'])
+        && request.resource.data.round in [1, 2]
+        && validLabels(request.resource.data);
+      allow delete: if isTeacher() && resource.data.ownerUid == request.auth.uid;
+
+      match /participants/{uid} {
+        allow get: if signedIn() && (request.auth.uid == uid || isOwner(roomId));
+        allow list: if isOwner(roomId);
+
+        // 입장: 자기 uid 문서만, 이름 등록(names)과 같은 일괄 쓰기 안에서
+        allow create: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['name', 'joinedAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 24
+          && request.resource.data.joinedAt == request.time
+          && getAfter(/databases/$(database)/documents/rooms/$(roomId)/names/$(request.resource.data.name)).data.uid == uid;
+
+        // 제출: 현재 라운드 답을 한 번만 추가할 수 있다(제출 후 잠금)
+        allow update: if signedIn()
+          && request.auth.uid == uid
+          && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['r1'])
+              && !('r1' in resource.data)
+              && roomDoc(roomId).data.round == 1
+              && validAnswer(request.resource.data.r1)
+            ) || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['r2'])
+              && !('r2' in resource.data)
+              && roomDoc(roomId).data.round == 2
+              && validAnswer(request.resource.data.r2)
+            )
+          );
+
+        allow delete: if isOwner(roomId);
+      }
+
+      match /names/{name} {
+        allow get: if signedIn();
+        allow list: if isOwner(roomId);
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid'])
+          && request.resource.data.uid == request.auth.uid
+          && getAfter(/databases/$(database)/documents/rooms/$(roomId)/participants/$(request.auth.uid)).data.name == name;
+        allow delete: if isOwner(roomId);
+      }
+    }
+  }
+}
