@@ -19,6 +19,18 @@ export function posStyle(p) {
   return `--c:${c};--t:${t}`;
 }
 
+// 의견 카드 색(포스트잇). 학생 uid로 정해서 교사·학생 화면에서 같은 색이 나오게 한다.
+const CARD_COLORS = ["#fdf0a6", "#f9d3dc", "#cfe6f7", "#d8efcf", "#f7dcc0", "#e4d8f3"];
+export function cardColor(uid) {
+  let h = 0;
+  for (const ch of String(uid)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return CARD_COLORS[h % CARD_COLORS.length];
+}
+
+export function likeCount(card) {
+  return Object.keys(card.likes ?? {}).length;
+}
+
 export const DEFAULT_LEFT = "매우 찬성";
 export const DEFAULT_RIGHT = "매우 반대";
 

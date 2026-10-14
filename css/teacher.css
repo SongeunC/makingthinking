@@ -139,3 +139,23 @@
   .t-room { padding: 12px 8px 32px; }
   .t-top { flex-wrap: wrap; }
 }
+
+/* 의견 카드 벽(교사) */
+.t-wall { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.t-wall .note-text { font-size: clamp(16px, 1.3vw, 21px); }
+.note-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.note-tag { font-size: 13px; padding: 2px 8px; border-radius: 6px; background: rgba(0,0,0,.08); color: var(--ink-soft); }
+.note.st-new { opacity: .78; outline: 3px dashed rgba(255,255,255,.85); outline-offset: 2px; }
+.note.st-new .note-tag { background: var(--accent); color: var(--accent-ink); }
+.note.st-hidden { opacity: .45; filter: grayscale(.6); }
+.note-foot .spacer { flex: 1; }
+.mini {
+  border: 1px solid rgba(0,0,0,.18); background: rgba(255,255,255,.7); color: var(--ink);
+  border-radius: 8px; padding: 3px 10px; font-size: 14px; min-height: 30px;
+}
+.mini.pub { background: var(--board); border-color: var(--board); color: #fff; }
+.mini.del { color: var(--danger); }
+.dlg-quote {
+  background: #f1ede1; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; color: var(--ink);
+  white-space: pre-wrap; max-height: 160px; overflow: auto;
+}

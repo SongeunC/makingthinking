@@ -1,6 +1,7 @@
 import { app } from "./firebase.js";
 import {
   POSITIONS, DEFAULT_LEFT, DEFAULT_RIGHT, esc, $, moveLabel, confirmDialog, toast, posStyle,
+  cardColor, likeCount,
 } from "./common.js";
 import {
   getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut,
@@ -206,11 +207,12 @@ async function createRoom(e) {
 
 // 방에 딸린 참여자·이름 기록을 모두 지운 뒤 방과 접속 코드를 지운다
 async function deleteRoom(r) {
-  const [ps, ns] = await Promise.all([
+  const [ps, ns, cs] = await Promise.all([
     getDocs(collection(db, "rooms", r.id, "participants")),
     getDocs(collection(db, "rooms", r.id, "names")),
+    getDocs(collection(db, "rooms", r.id, "cards")),
   ]);
-  await Promise.all([...ps.docs, ...ns.docs].map((d) => deleteDoc(d.ref)));
+  await Promise.all([...ps.docs, ...ns.docs, ...cs.docs].map((d) => deleteDoc(d.ref)));
   await deleteDoc(doc(db, "codes", r.code));
   await deleteDoc(doc(db, "rooms", r.id));
 }
@@ -226,7 +228,7 @@ function openRoom(roomId) {
     shown: new Set(),        // 화살표가 보이는 학생
     expanded: new Set(),     // 이유 상자가 열린 학생
     full: new Set(),         // 접힌 이유를 펼친 화살표 ("uid:1" / "uid:2")
-    hideNames: false,
+    cards: [],               // 의견 카드, 낸 순서대로
     showFirst: false,        // 2차 때 1차 화살표 함께 보기
     manage: false,           // 참여자 정리(삭제) 모드
   };
@@ -250,6 +252,12 @@ function openRoom(roomId) {
       .sort((a, b) => (a.joinedAt?.toMillis?.() ?? Infinity) - (b.joinedAt?.toMillis?.() ?? Infinity) || a.uid.localeCompare(b.uid));
     const alive = new Set(s.people.map((p) => p.uid));
     for (const set of [s.shown, s.expanded]) for (const u of set) if (!alive.has(u)) set.delete(u);
+    draw(s);
+  }, (ex) => console.error(ex)));
+
+  unsubs.push(onSnapshot(collection(db, "rooms", roomId, "cards"), (snap) => {
+    s.cards = snap.docs.map((d) => ({ uid: d.id, ...d.data() }))
+      .sort((a, b) => (a.at?.toMillis?.() ?? Infinity) - (b.at?.toMillis?.() ?? Infinity));
     draw(s);
   }, (ex) => console.error(ex)));
 
@@ -278,10 +286,18 @@ async function onRoomClick(e, s) {
   const t = e.target;
   if (!s.room) return;
 
+  const cardAct = t.closest("[data-card-act]");
+  if (cardAct) return onCardAction(s, cardAct.dataset.cardAct, cardAct.dataset.uid);
+
   const chip = t.closest(".chip");
   if (chip) {
     const uid = chip.dataset.uid;
     if (s.manage) return removePerson(s, uid);
+    if (s.room.stage === "cards") {
+      // 카드 단계: 그 학생의 카드로 이동
+      root.querySelector(`.note[data-uid="${uid}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     toggleStudent(s, uid);
     return draw(s);
   }
@@ -304,7 +320,29 @@ async function onRoomClick(e, s) {
     s.shown.clear();
     s.expanded.clear();
   } else if (act === "hide") {
-    s.hideNames = !s.hideNames;
+    // 방에 저장해서 학생 카드 화면에도 함께 적용되고, 다시 열어도 그대로 남는다
+    return roomUpdate(s, { hideNames: !s.room.hideNames });
+  } else if (act === "next") {
+    const ok = await confirmDialog({
+      title: "의견 카드 단계로 넘어갈까요?",
+      body: "학생 화면이 의견 카드 쓰기로 바뀝니다. 수직선 결과는 그대로 남고, 언제든 수직선으로 돌아올 수 있습니다.",
+      ok: "넘어가기",
+    });
+    if (ok) await roomUpdate(s, { stage: "cards" });
+    return;
+  } else if (act === "toline") {
+    return roomUpdate(s, { stage: "line" });
+  } else if (act === "puball") {
+    const targets = s.cards.filter((c) => c.status === "new");
+    if (!targets.length) return toast("새로 공개할 카드가 없습니다.");
+    try {
+      await Promise.all(targets.map((c) => updateDoc(doc(db, "rooms", s.roomId, "cards", c.uid), { status: "public" })));
+      toast(`카드 ${targets.length}장을 공개했습니다.`);
+    } catch (ex) {
+      console.error(ex);
+      toast("공개하지 못한 카드가 있습니다.");
+    }
+    return;
   } else if (act === "first") {
     s.showFirst = !s.showFirst;
   } else if (act === "manage") {
@@ -342,6 +380,7 @@ async function removePerson(s, uid) {
   });
   if (!ok) return;
   try {
+    await deleteDoc(doc(db, "rooms", s.roomId, "cards", uid));
     await deleteDoc(doc(db, "rooms", s.roomId, "participants", uid));
     await deleteDoc(doc(db, "rooms", s.roomId, "names", p.name));
   } catch (ex) {
@@ -350,20 +389,58 @@ async function removePerson(s, uid) {
   }
 }
 
+async function roomUpdate(s, data) {
+  try {
+    await updateDoc(doc(db, "rooms", s.roomId), data);
+  } catch (ex) {
+    console.error(ex);
+    toast("바꾸지 못했습니다.");
+  }
+}
+
+async function onCardAction(s, act, uid) {
+  const ref = doc(db, "rooms", s.roomId, "cards", uid);
+  try {
+    if (act === "pub") await updateDoc(ref, { status: "public" });
+    else if (act === "hide") await updateDoc(ref, { status: "hidden" });
+    else if (act === "del") {
+      const c = s.cards.find((x) => x.uid === uid);
+      const ok = await confirmDialog({
+        title: "이 카드를 삭제할까요?",
+        body: `<div class="dlg-quote">${esc(c?.text ?? "")}</div>지운 카드는 되돌릴 수 없습니다.`,
+        ok: "삭제", danger: true,
+      });
+      if (ok) await deleteDoc(ref);
+    }
+  } catch (ex) {
+    console.error(ex);
+    toast("처리하지 못했습니다.");
+  }
+}
+
 function label(s, p) {
-  return s.hideNames ? `${s.people.indexOf(p) + 1}번` : p.name;
+  return s.room.hideNames ? `${s.people.indexOf(p) + 1}번` : p.name;
+}
+
+function cardLabel(s, c) {
+  const p = s.people.find((x) => x.uid === c.uid);
+  if (!s.room.hideNames) return c.name;
+  return p ? `${s.people.indexOf(p) + 1}번` : "";
 }
 
 function draw(s) {
   const { room, people } = s;
   if (!room) return;
   const round = room.round;
-  const doneCount = people.filter((p) => p[`r${round}`]).length;
+  const cardStage = room.stage === "cards";
+  const cardBy = new Map(s.cards.map((c) => [c.uid, c]));
+  const isDone = (p) => (cardStage ? cardBy.has(p.uid) : !!p[`r${round}`]);
+  const doneCount = people.filter(isDone).length;
 
   const chips = people.map((p) => {
-    const done = !!p[`r${round}`];
-    const mv = round === 2 ? moveLabel(p) : "";
-    const cls = ["chip", done && "done", isShown(s, p.uid) && "shown", s.expanded.has(p.uid) && "expanded"].filter(Boolean).join(" ");
+    const done = isDone(p);
+    const mv = round === 2 && !cardStage ? moveLabel(p) : "";
+    const cls = ["chip", done && "done", !cardStage && isShown(s, p.uid) && "shown", !cardStage && s.expanded.has(p.uid) && "expanded"].filter(Boolean).join(" ");
     return `<button class="${cls}" data-uid="${p.uid}" title="${done ? "제출함" : "아직 안 냄"}">
       <span class="chk">${done ? "✓" : "…"}</span>
       <span>${esc(label(s, p))}</span>
@@ -380,7 +457,9 @@ function draw(s) {
       <header class="t-top">
         <a class="btn" href="#" style="text-decoration:none">← 목록</a>
         <div class="t-title">
-          <span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>
+          ${cardStage
+            ? `<span class="badge">의견 카드</span>`
+            : `<span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>`}
           <h1>${esc(room.topic)}</h1>
         </div>
         <div class="qr-mini">
@@ -390,13 +469,20 @@ function draw(s) {
       </header>
 
       <div class="t-tools">
-        <button class="btn ${s.allMode ? "on" : ""}" data-act="all">모두 보기</button>
-        <button class="btn ${s.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
-        ${round === 1
-          ? `<button class="btn btn-primary" data-act="again">다시 생각</button>`
-          : `<button class="btn ${s.showFirst ? "on" : ""}" data-act="first">1차 보기</button>`}
+        ${cardStage ? `
+          <button class="btn" data-act="toline">← 수직선</button>
+          <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
+          <button class="btn btn-primary" data-act="puball">전체 공개</button>
+        ` : `
+          <button class="btn ${s.allMode ? "on" : ""}" data-act="all">모두 보기</button>
+          <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
+          ${round === 1
+            ? `<button class="btn btn-primary" data-act="again">다시 생각</button>`
+            : `<button class="btn ${s.showFirst ? "on" : ""}" data-act="first">1차 보기</button>`}
+          <button class="btn" data-act="next">다음: 의견 카드 →</button>
+        `}
         <span class="spacer"></span>
-        <span class="count">${round}차 제출 ${doneCount} / ${people.length}</span>
+        <span class="count">${cardStage ? "카드" : `${round}차 제출`} ${doneCount} / ${people.length}</span>
         <button class="btn ${s.manage ? "on" : ""}" data-act="manage">${s.manage ? "정리 끝" : "참여자 정리"}</button>
       </div>
 
@@ -404,6 +490,7 @@ function draw(s) {
         ${chips || `<span class="empty">학생이 입장하면 여기에 이름이 나타납니다.</span>`}
       </div>
 
+      ${cardStage ? cardWall(s) : `
       <div class="board">
         ${showUp ? lane(s, 2, "up") : ""}
         <div class="grid13 axis">
@@ -412,10 +499,32 @@ function draw(s) {
           <div class="end right" style="${posStyle(5)}">${esc(room.rightLabel)}</div>
         </div>
         ${showDown ? lane(s, 1, "down") : ""}
-      </div>
+      </div>`}
     </div>`;
 
   markClamped();
+}
+
+// 의견 카드 벽(교사용). 모든 카드가 보이고, 공개 전·숨김 카드는 흐리게 표시한다.
+function cardWall(s) {
+  if (!s.cards.length) return `<p class="wall-empty">학생들이 카드를 내면 여기에 모입니다.</p>`;
+  const tag = { new: "공개 전", public: "공개됨", hidden: "숨김" };
+  return `<div class="wall t-wall">${s.cards.map((c) => `
+    <div class="note st-${c.status}" data-uid="${c.uid}" style="--note:${cardColor(c.uid)}">
+      <div class="note-head">
+        <span class="note-name">${esc(cardLabel(s, c))}</span>
+        <span class="note-tag">${tag[c.status] ?? ""}</span>
+      </div>
+      <div class="note-text">${esc(c.text)}</div>
+      <div class="note-foot">
+        <span class="like-count">♥ ${likeCount(c)}</span>
+        <span class="spacer"></span>
+        ${c.status === "public"
+          ? `<button class="mini" data-card-act="hide" data-uid="${c.uid}">숨기기</button>`
+          : `<button class="mini pub" data-card-act="pub" data-uid="${c.uid}">공개</button>`}
+        <button class="mini del" data-card-act="del" data-uid="${c.uid}">삭제</button>
+      </div>
+    </div>`).join("")}</div>`;
 }
 
 // 한 라운드의 화살표 줄. 같은 칸은 수직선에서 멀어지는 쪽으로 쌓는다.

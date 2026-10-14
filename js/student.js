@@ -1,10 +1,13 @@
 import { app } from "./firebase.js";
-import { POSITIONS, esc, $, cleanName, confirmDialog, posStyle } from "./common.js";
+import {
+  POSITIONS, esc, $, cleanName, confirmDialog, posStyle, cardColor, likeCount, toast,
+} from "./common.js";
 import {
   initializeAuth, inMemoryPersistence, signInAnonymously,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, onSnapshot, runTransaction, updateDoc, serverTimestamp,
+  getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, updateDoc, serverTimestamp,
+  collection, query, where, deleteField,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 // 메모리에만 로그인 상태를 둔다 → 새로고침하거나 다시 들어오면 새 참여자가 된다(PRD 5-2)
@@ -19,6 +22,9 @@ const state = {
   pos: null,         // 아직 제출하지 않은 선택
   reason: "",
   sending: false,
+  myCard: null,      // 내 의견 카드
+  wall: [],          // 공개된 카드들
+  cardText: "",
 };
 
 // ---------- 입장 ----------
@@ -96,6 +102,17 @@ function enterRoom() {
     render();
   });
 
+  onSnapshot(doc(db, "rooms", state.roomId, "cards", uid), (snap) => {
+    state.myCard = snap.exists() ? snap.data() : null;
+    render();
+  }, (ex) => console.error(ex));
+
+  onSnapshot(query(collection(db, "rooms", state.roomId, "cards"), where("status", "==", "public")), (snap) => {
+    state.wall = snap.docs.map((d) => ({ uid: d.id, ...d.data() }))
+      .sort((a, b) => (a.at?.toMillis?.() ?? 0) - (b.at?.toMillis?.() ?? 0));
+    render();
+  }, (ex) => console.error(ex));
+
   // 실수로 창을 닫거나 새로고침하지 않도록 경고(다시 들어오면 새 참여자가 되므로)
   window.addEventListener("beforeunload", (e) => { e.preventDefault(); e.returnValue = ""; });
 }
@@ -114,6 +131,7 @@ function showEnded(msg) {
 function render() {
   const { room, me } = state;
   if (!room || !me || state.viewKey === "ended") return;
+  if (room.stage === "cards") return renderCards();
   const round = room.round;
   const mine = me[`r${round}`];
   const key = [round, mine ? "done" : "todo", room.topic, room.leftLabel, room.rightLabel].join("|");
@@ -219,5 +237,125 @@ async function submit() {
   } finally {
     state.sending = false;
     updateSubmit();
+  }
+}
+
+// ---------- 의견 카드 ----------
+
+function renderCards() {
+  const { room, me, myCard } = state;
+  const key = ["cards", myCard ? `${myCard.status}:${likeCount(myCard)}` : "todo", room.topic].join("|");
+  if (key !== state.viewKey) {
+    state.viewKey = key;
+    $("#room-view").innerHTML = `
+      <div class="board-head">
+        <span class="badge">의견 카드</span>
+        <h1 class="topic" style="margin-top:10px">${esc(room.topic)}</h1>
+        <div class="me">나: ${esc(me.name)}</div>
+      </div>
+      <div id="my-card"></div>
+      <h2 class="wall-title">친구들의 생각</h2>
+      <div class="wall" id="wall"></div>`;
+    drawMyCard();
+  }
+  drawWall();
+}
+
+function drawMyCard() {
+  const box = $("#my-card");
+  const c = state.myCard;
+  if (c) {
+    const msg = {
+      new: "카드를 냈습니다. 선생님이 공개하면 아래에 나타납니다.",
+      public: "내 카드가 공개되었습니다.",
+      hidden: "선생님이 이 카드를 숨겼습니다.",
+    }[c.status] ?? "";
+    box.innerHTML = `
+      <div class="card">
+        <h3 style="font-size:18px;margin-bottom:10px">내 카드</h3>
+        <div class="note" style="--note:${cardColor(auth.currentUser.uid)}">
+          <div class="note-text">${esc(c.text)}</div>
+          ${c.status === "public" ? `<div class="note-foot"><span class="like-count">♥ ${likeCount(c)}</span></div>` : ""}
+        </div>
+        <p class="muted small" style="margin:12px 0 0">${msg}</p>
+      </div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="card">
+      <label class="field">
+        <span>토론을 마치며 내 생각을 써 주세요.</span>
+        <textarea id="card-text" placeholder="오늘 토론에서 새롭게 알게 된 점, 바뀐 생각, 하고 싶은 말">${esc(state.cardText)}</textarea>
+      </label>
+      <button class="btn btn-primary btn-block" id="card-btn">카드 내기</button>
+      <p class="error" id="card-error"></p>
+    </div>`;
+  const ta = $("#card-text");
+  const btn = $("#card-btn");
+  const sync = () => { btn.disabled = state.sending || !state.cardText.trim(); };
+  ta.addEventListener("input", () => { state.cardText = ta.value; sync(); });
+  btn.addEventListener("click", async () => {
+    const text = state.cardText.trim();
+    if (!text) return;
+    const ok = await confirmDialog({
+      title: "이 내용으로 카드를 낼까요?",
+      body: "낸 뒤에는 고칠 수 없습니다.",
+      ok: "카드 내기",
+    });
+    if (!ok) return;
+    state.sending = true;
+    sync();
+    try {
+      await setDoc(doc(db, "rooms", state.roomId, "cards", auth.currentUser.uid), {
+        name: state.me.name, text, at: serverTimestamp(), status: "new", likes: {},
+      });
+    } catch (ex) {
+      console.error(ex);
+      $("#card-error").textContent = "카드를 내지 못했습니다. 다시 시도해 주세요.";
+    } finally {
+      state.sending = false;
+      if ($("#card-btn")) sync();
+    }
+  });
+  sync();
+}
+
+function drawWall() {
+  const wall = $("#wall");
+  if (!wall) return;
+  const uid = auth.currentUser.uid;
+  const hide = !!state.room.hideNames;
+  if (!state.wall.length) {
+    wall.innerHTML = `<p class="wall-empty">아직 공개된 카드가 없습니다.</p>`;
+    return;
+  }
+  wall.innerHTML = state.wall.map((c) => {
+    const mine = c.uid === uid;
+    const liked = !!c.likes?.[uid];
+    return `
+      <div class="note ${mine ? "mine" : ""}" style="--note:${cardColor(c.uid)}">
+        ${hide ? "" : `<div class="note-name">${esc(c.name)}${mine ? " (나)" : ""}</div>`}
+        <div class="note-text">${esc(c.text)}</div>
+        <div class="note-foot">
+          ${mine
+            ? `<span class="like-count">♥ ${likeCount(c)}</span>`
+            : `<button class="like ${liked ? "on" : ""}" data-like="${c.uid}">${liked ? "♥" : "♡"} ${likeCount(c)}</button>`}
+        </div>
+      </div>`;
+  }).join("");
+  wall.querySelectorAll("[data-like]").forEach((b) => b.addEventListener("click", () => toggleLike(b.dataset.like)));
+}
+
+async function toggleLike(cardUid) {
+  const uid = auth.currentUser.uid;
+  const card = state.wall.find((c) => c.uid === cardUid);
+  if (!card) return;
+  try {
+    await updateDoc(doc(db, "rooms", state.roomId, "cards", cardUid), {
+      [`likes.${uid}`]: card.likes?.[uid] ? deleteField() : true,
+    });
+  } catch (ex) {
+    console.error(ex);
+    toast("좋아요를 누르지 못했습니다.");
   }
 }

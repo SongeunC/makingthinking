@@ -7,6 +7,8 @@ rules_version = '2';
 //   rooms/{roomId}                        { ownerUid, topic, leftLabel, rightLabel, code, round(1|2), createdAt }
 //   rooms/{roomId}/participants/{uid}     { name, joinedAt, r1?: {pos, reason, at}, r2?: {...} }
 //   rooms/{roomId}/names/{이름}            { uid }   같은 이름 중복 방지용
+//   rooms/{roomId}/cards/{uid}            { name, text, at, status, likes }   의견 카드
+//   rooms 의 선택 필드: stage('line'|'cards'), hideNames(bool)
 //
 // 교사: 구글 로그인. 학생: 익명 로그인(새로 들어올 때마다 새 uid).
 // 학생은 자기 participants 문서만 읽을 수 있다. 다른 학생의 선택·이유는 읽을 수 없다.
@@ -68,8 +70,10 @@ service cloud.firestore {
         && validLabels(request.resource.data);
       allow update: if isTeacher()
         && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['round', 'topic', 'leftLabel', 'rightLabel'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['round', 'topic', 'leftLabel', 'rightLabel', 'stage', 'hideNames'])
         && request.resource.data.round in [1, 2]
+        && (!('stage' in request.resource.data) || request.resource.data.stage in ['line', 'cards'])
+        && (!('hideNames' in request.resource.data) || request.resource.data.hideNames is bool)
         && validLabels(request.resource.data);
       allow delete: if isTeacher() && resource.data.ownerUid == request.auth.uid;
 
@@ -102,6 +106,45 @@ service cloud.firestore {
               && roomDoc(roomId).data.round == 2
               && validAnswer(request.resource.data.r2)
             )
+          );
+
+        allow delete: if isOwner(roomId);
+      }
+
+      // 의견 카드: 학생당 1장(문서 ID = 학생 uid). status: new(교사만 봄) / public(공개) / hidden(숨김)
+      // likes: { 좋아요누른uid: true }
+      match /cards/{uid} {
+        function isParticipant() {
+          return signedIn() && exists(/databases/$(database)/documents/rooms/$(roomId)/participants/$(request.auth.uid));
+        }
+
+        allow get: if signedIn()
+          && (request.auth.uid == uid || isOwner(roomId) || (resource.data.status == 'public' && isParticipant()));
+        allow list: if isOwner(roomId) || (resource.data.status == 'public' && isParticipant());
+
+        allow create: if signedIn()
+          && request.auth.uid == uid
+          && roomDoc(roomId).data.get('stage', 'line') == 'cards'
+          && request.resource.data.keys().hasOnly(['name', 'text', 'at', 'status', 'likes'])
+          && request.resource.data.name == get(/databases/$(database)/documents/rooms/$(roomId)/participants/$(uid)).data.name
+          && request.resource.data.text is string && request.resource.data.text.trim().size() > 0
+          && request.resource.data.at == request.time
+          && request.resource.data.status == 'new'
+          && request.resource.data.likes == {};
+
+        // 교사: 공개·숨김 상태만 바꾼다
+        // 학생: 공개된 다른 친구 카드에 자기 좋아요 하나만 넣거나 뺀다
+        allow update: if (
+            isOwner(roomId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+            && request.resource.data.status in ['new', 'public', 'hidden']
+          ) || (
+            isParticipant()
+            && request.auth.uid != uid
+            && resource.data.status == 'public'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+            && request.resource.data.likes.diff(resource.data.likes).affectedKeys().hasOnly([request.auth.uid])
+            && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid] == true)
           );
 
         allow delete: if isOwner(roomId);

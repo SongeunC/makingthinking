@@ -149,3 +149,25 @@ a { color: var(--accent); }
 /* 칠판 위 제목 영역 */
 .board-head { color: var(--chalk); text-align: center; padding: 6px 4px 18px; }
 .board-head .me { color: var(--chalk-soft); font-size: 16px; margin-top: 8px; }
+
+/* ---------- 의견 카드(포스트잇) ---------- */
+.wall-title { color: var(--chalk); font-size: 22px; margin: 26px 0 12px; text-align: center; }
+.wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; align-items: start; }
+.wall-empty { color: var(--chalk-soft); text-align: center; grid-column: 1 / -1; }
+.note {
+  background: var(--note, #fdf0a6); color: var(--ink); border-radius: 4px 4px 14px 4px; padding: 14px 14px 10px;
+  box-shadow: 0 3px 0 rgba(0,0,0,.18), 0 6px 14px rgba(0,0,0,.12);
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.note.mine { outline: 3px solid var(--accent); }
+.note-name { font-size: 17px; }
+.note-text {
+  font-family: var(--font-text); font-size: 16px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+}
+.note-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.like-count { color: #b2385a; font-size: 16px; }
+.like {
+  border: 2px solid rgba(0,0,0,.12); background: rgba(255,255,255,.6); color: #b2385a;
+  border-radius: 999px; padding: 4px 12px; font-size: 16px; min-height: 36px;
+}
+.like.on { background: #b2385a; border-color: #b2385a; color: #fff; }
