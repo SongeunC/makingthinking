@@ -16,6 +16,7 @@
 | `js/student.js` | 학생 입장, 1차·2차 제출 |
 | `js/teacher.js` | 교사 로그인, 방 목록, 방 화면(칩, 화살표, QR, 의견 카드, 워드클라우드) |
 | `js/wordcloud.js` | 단어 세기(조사 자르기)와 워드클라우드 배치 |
+| `js/fresh.js` | 항상 최신 파일을 받게 하는 로더. **새 JS 파일을 만들면 이 파일의 `modules` 목록에 추가할 것** |
 | `firestore.rules` | Firestore 보안 규칙. **바꾸면 Firebase 콘솔에도 붙여 넣어야 적용된다** |
 
 ## 다른 컴퓨터에서 이어서 작업하기
