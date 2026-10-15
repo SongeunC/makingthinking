@@ -511,8 +511,8 @@ function draw(s) {
           ${round === 1
             ? `<button class="btn btn-primary" data-act="again">다시 생각</button>`
             : `<button class="btn ${s.showFirst ? "on" : ""}" data-act="first">1차 보기</button>`}
-          <button class="btn" data-act="cloud">워드클라우드</button>
           <button class="btn" data-act="next">다음: 의견 카드 →</button>
+          <button class="btn" data-act="cloud">워드클라우드</button>
         `}
         <span class="spacer"></span>
         <span class="count">${cardStage ? "카드" : `${round}차 제출`} ${doneCount} / ${people.length}</span>
