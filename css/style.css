@@ -171,3 +171,8 @@ a { color: var(--accent); }
   border-radius: 999px; padding: 4px 12px; font-size: 16px; min-height: 36px;
 }
 .like.on { background: #b2385a; border-color: #b2385a; color: #fff; }
+
+.switch {
+  display: block; margin: 8px auto 0; border: none; background: transparent; color: var(--chalk-soft);
+  font-size: 13px; text-decoration: underline; padding: 4px;
+}

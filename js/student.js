@@ -3,19 +3,20 @@ import {
   POSITIONS, esc, $, cleanName, confirmDialog, posStyle, cardColor, likeCount, toast,
 } from "./common.js";
 import {
-  initializeAuth, inMemoryPersistence, signInAnonymously,
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, signInAnonymously, signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, updateDoc, serverTimestamp,
   collection, query, where, deleteField,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
-// 메모리에만 로그인 상태를 둔다 → 새로고침하거나 다시 들어오면 새 참여자가 된다(PRD 5-2)
-const auth = initializeAuth(app, { persistence: inMemoryPersistence });
+// 기기에 로그인 상태를 저장한다 → 새로고침하거나 튕겨도 같은 링크로 다시 열면 원래 참여자로 이어진다
+const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
 const db = getFirestore(app);
 
 const state = {
   roomId: null,
+  code: null,
   room: null,
   me: null,          // 내 participants 문서
   viewKey: "",       // 화면을 다시 그릴지 판단하는 값
@@ -32,10 +33,45 @@ const state = {
 const codeInput = $("#code");
 const nameInput = $("#name");
 const params = new URLSearchParams(location.search);
-if (params.get("code")) {
-  codeInput.value = params.get("code").replace(/\D/g, "").slice(0, 6);
-  nameInput.focus();
+const urlCode = (params.get("code") ?? "").replace(/\D/g, "").slice(0, 6);
+if (urlCode) codeInput.value = urlCode;
+
+// 마지막으로 들어간 방. { code, roomId, uid }
+const SESSION_KEY = "vl-session";
+function readSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch { return null; }
 }
+function saveSession(s) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch { /* 저장 불가 환경 */ }
+}
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* 저장 불가 환경 */ }
+}
+
+function participantRef(roomId) {
+  return doc(db, "rooms", roomId, "participants", auth.currentUser.uid);
+}
+
+// 처음 열 때: 이 기기로 이미 들어가 있던 방이면 바로 이어서 들어간다
+(async () => {
+  try {
+    await auth.authStateReady();
+    const saved = readSession();
+    if (auth.currentUser && saved?.uid === auth.currentUser.uid && (!urlCode || urlCode === saved.code)) {
+      const snap = await getDoc(participantRef(saved.roomId));
+      if (snap.exists()) {
+        state.roomId = saved.roomId;
+        state.code = saved.code;
+        return enterRoom();
+      }
+    }
+  } catch (ex) {
+    console.error(ex);
+  }
+  $("#join-loading").hidden = true;
+  $("#join-view").hidden = false;
+  if (urlCode) nameInput.focus();
+})();
 
 $("#join-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -54,9 +90,13 @@ $("#join-form").addEventListener("submit", async (e) => {
     const codeSnap = await getDoc(doc(db, "codes", code));
     if (!codeSnap.exists()) throw new Error("접속 코드를 다시 확인하세요.");
     const roomId = codeSnap.data().roomId;
-    const finalName = await join(roomId, name);
+    // 이 기기로 이미 이 방에 들어와 있으면 새로 만들지 않고 이어서 들어간다
+    const mine = await getDoc(participantRef(roomId));
+    if (!mine.exists()) await join(roomId, name);
     state.roomId = roomId;
-    enterRoom(finalName);
+    state.code = code;
+    saveSession({ code, roomId, uid: auth.currentUser.uid });
+    enterRoom();
   } catch (ex) {
     console.error(ex);
     err.textContent = ex.message?.startsWith("접속") ? ex.message : "입장하지 못했습니다. 잠시 후 다시 시도하세요.";
@@ -83,6 +123,7 @@ async function join(roomId, base) {
 }
 
 function enterRoom() {
+  $("#join-loading").hidden = true;
   $("#join-view").hidden = true;
   $("#room-view").hidden = false;
   const uid = auth.currentUser.uid;
@@ -91,7 +132,7 @@ function enterRoom() {
     state.room = snap.exists() ? snap.data() : null;
     if (!state.room) return showEnded("수업 방이 닫혔습니다.");
     render();
-  }, () => showEnded("수업 방에 연결할 수 없습니다."));
+  }, () => showEnded("수업 방에 연결할 수 없습니다. 잠시 후 다시 열어 주세요.", { forget: false }));
 
   onSnapshot(doc(db, "rooms", state.roomId, "participants", uid), (snap) => {
     if (!snap.exists()) {
@@ -113,16 +154,31 @@ function enterRoom() {
     render();
   }, (ex) => console.error(ex));
 
-  // 실수로 창을 닫거나 새로고침하지 않도록 경고(다시 들어오면 새 참여자가 되므로)
-  window.addEventListener("beforeunload", (e) => { e.preventDefault(); e.returnValue = ""; });
+  // 머리글의 "다른 이름으로 새로 들어가기" (한 기기를 여러 학생이 번갈아 쓸 때)
+  $("#room-view").addEventListener("click", async (e) => {
+    if (!e.target.closest("[data-switch]")) return;
+    const ok = await confirmDialog({
+      title: "다른 이름으로 새로 들어갈까요?",
+      body: `지금 <b>${esc(state.me?.name ?? "")}</b>(으)로 낸 기록은 그대로 남습니다.<br>이 기기에서는 새 이름으로 다시 입장합니다.`,
+      ok: "새로 들어가기",
+    });
+    if (ok) restart();
+  });
 }
 
-function showEnded(msg) {
+async function restart() {
+  clearSession();
+  try { await signOut(auth); } catch { /* 이미 로그아웃 */ }
+  location.href = `./?code=${state.code ?? ""}`;
+}
+
+function showEnded(msg, { forget = true } = {}) {
   state.viewKey = "ended";
+  if (forget) clearSession();
   $("#room-view").innerHTML = `
     <div class="card">
       <p style="font-size:18px;font-weight:600;margin:0 0 16px">${esc(msg)}</p>
-      <a class="btn btn-primary" href="index.html" style="text-decoration:none;display:inline-block">처음으로</a>
+      <a class="btn btn-primary" href="./?code=${esc(state.code ?? "")}" style="text-decoration:none;display:inline-block">처음으로</a>
     </div>`;
 }
 
@@ -143,7 +199,7 @@ function render() {
     <div class="board-head">
       <span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>
       <h1 class="topic" style="margin-top:10px">${esc(room.topic)}</h1>
-      <div class="me">나: ${esc(me.name)}</div>
+      <div class="me">나: ${esc(me.name)} <button class="switch" data-switch>다른 이름으로 새로 들어가기</button></div>
     </div>`;
 
   if (mine) {
@@ -251,7 +307,7 @@ function renderCards() {
       <div class="board-head">
         <span class="badge">의견 카드</span>
         <h1 class="topic" style="margin-top:10px">${esc(room.topic)}</h1>
-        <div class="me">나: ${esc(me.name)}</div>
+        <div class="me">나: ${esc(me.name)} <button class="switch" data-switch>다른 이름으로 새로 들어가기</button></div>
       </div>
       <div id="my-card"></div>
       <h2 class="wall-title">친구들의 생각</h2>
