@@ -1,4 +1,85 @@
-// 워드클라우드: 띄어쓰기로 단어를 나누고 흔한 조사를 뒤에서 잘라 센다(형태소 분석 아님, PRD 8).
+// 워드클라우드
+// 1) 기본: 한국어 형태소 분석기 Kiwi(브라우저용 WASM)로 명사만 뽑아 센다.
+// 2) 분석기를 못 불러오면: 띄어쓰기로 나누고 흔한 조사를 뒤에서 잘라 세는 간단 방식(countWords)으로 대신한다.
+
+const KIWI = "https://cdn.jsdelivr.net/npm/kiwi-nlp@0.21.0/dist/";
+// 모델 파일은 저장소 kiwi/ 폴더에 둔다(Kiwi v0.21.0 base 모델 중 필요한 것만)
+const MODEL_FILES = ["sj.morph", "sj.knlm", "combiningRule.txt", "extract.mdl", "typo.dict", "default.dict"];
+const MODEL_CACHE = "kiwi-model-v0.21.0";
+
+// 명사(일반·고유), 외국어, 어근만 쓴다
+const NOUN_TAGS = new Set(["NNG", "NNP", "SL", "XR"]);
+// 명사지만 어느 글에나 나와서 뜻이 거의 없는 말
+const NOUN_STOP = new Set(["생각", "때", "등", "정도", "경우", "자기", "자신", "이번", "다음", "처음", "하나", "뭔가"]);
+
+let kiwiPromise = null;
+
+// 모델 파일은 처음 한 번만 내려받고 브라우저 저장소(Cache Storage)에 둔다
+function modelUrl(name) {
+  const url = new URL(`../kiwi/${name}`, import.meta.url);
+  url.search = "";
+  return url.href;
+}
+
+async function fetchModelFile(name) {
+  const url = { href: modelUrl(name) };
+  let cache = null;
+  try {
+    cache = await caches.open(MODEL_CACHE);
+    const hit = await cache.match(url.href);
+    if (hit) return new Uint8Array(await hit.arrayBuffer());
+  } catch { /* 저장소를 못 쓰면 매번 내려받는다 */ }
+  const res = await fetch(url.href);
+  if (!res.ok) throw new Error(`모델 파일을 받지 못했습니다: ${name}`);
+  if (cache) {
+    try { await cache.put(url.href, res.clone()); } catch { /* 저장 실패는 무시 */ }
+  }
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+// onProgress(받은 파일 수, 전체 파일 수, 처음 받는지 여부)
+export function loadAnalyzer(onProgress) {
+  if (!kiwiPromise) {
+    kiwiPromise = (async () => {
+      let firstTime = true;
+      try { firstTime = !(await (await caches.open(MODEL_CACHE)).match(modelUrl("sj.knlm"))); } catch { /* 모름 */ }
+      onProgress?.(0, MODEL_FILES.length, firstTime);
+      const { KiwiBuilder } = await import(`${KIWI}index.js`);
+      const builder = await KiwiBuilder.create(`${KIWI}kiwi-wasm.wasm`);
+      const modelFiles = {};
+      let done = 0;
+      await Promise.all(MODEL_FILES.map(async (f) => {
+        modelFiles[f] = await fetchModelFile(f);
+        onProgress?.(++done, MODEL_FILES.length, firstTime);
+      }));
+      await new Promise((r) => setTimeout(r, 30));   // 안내 문구가 먼저 그려지게 잠깐 쉰다
+      return builder.build({ modelFiles, modelType: "knlm", loadDefaultDict: true, loadMultiDict: false, loadTypoDict: false });
+    })();
+    kiwiPromise.catch(() => { kiwiPromise = null; });   // 실패하면 다음에 다시 시도
+  }
+  return kiwiPromise;
+}
+
+// 글 목록 → [[명사, 횟수], ...] (많은 순)
+export async function countNouns(kiwi, texts) {
+  const counts = new Map();
+  for (const text of texts) {
+    const tokens = await kiwi.tokenize(String(text ?? ""));
+    for (const t of tokens) {
+      if (!NOUN_TAGS.has(t.tag)) continue;
+      const w = t.tag === "SL" ? t.str.toLowerCase() : t.str;
+      if (NOUN_STOP.has(w)) continue;
+      counts.set(w, (counts.get(w) ?? 0) + 1);
+    }
+  }
+  return sortCounts(counts);
+}
+
+function sortCounts(counts) {
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"));
+}
+
+// ---------- 간단 방식(분석기를 못 쓸 때) ----------
 
 // 긴 것부터 확인해야 "에서는"이 "는"만 잘리지 않는다
 const PARTICLES = [
@@ -40,7 +121,7 @@ export function countWords(texts) {
       counts.set(w, (counts.get(w) ?? 0) + 1);
     }
   }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"));
+  return sortCounts(counts);
 }
 
 const COLORS = ["#fdfaf0", "#f4d465", "#f2b3c0", "#abd2e4", "#cfe3c8", "#f3cfb4", "#86bce0", "#eb93a8"];

@@ -3,7 +3,7 @@ import {
   POSITIONS, DEFAULT_LEFT, DEFAULT_RIGHT, esc, $, moveLabel, confirmDialog, toast, posStyle,
   cardColor, likeCount,
 } from "./common.js";
-import { countWords, layoutCloud } from "./wordcloud.js";
+import { countWords, countNouns, loadAnalyzer, layoutCloud } from "./wordcloud.js";
 import {
   getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
@@ -546,10 +546,33 @@ function cloudTexts(s) {
   return s.people.flatMap((p) => rounds.map((r) => p[`r${r}`]?.reason).filter(Boolean));
 }
 
+// 글 목록이 같으면 다시 분석하지 않는다(학생 제출 때마다 화면이 다시 그려지므로)
+let cloudMemo = { key: null, all: null, simple: false };
+let cloudSeq = 0;
+
+async function analyzeTexts(texts, onStatus) {
+  const key = JSON.stringify(texts);
+  if (cloudMemo.key === key) return cloudMemo;
+  let all;
+  let simple = false;
+  try {
+    const kiwi = await loadAnalyzer((done, total, first) => onStatus(
+      first
+        ? `단어 분석기를 준비하고 있습니다… ${done}/${total}<br><small>처음 한 번만 약 47MB를 내려받습니다. 다음부터는 바로 열립니다.</small>`
+        : "단어 분석기를 준비하고 있습니다…"));
+    all = await countNouns(kiwi, texts);
+  } catch (ex) {
+    console.error(ex);
+    all = countWords(texts);
+    simple = true;
+  }
+  cloudMemo = { key, all, simple };
+  return cloudMemo;
+}
+
 function drawCloud(s) {
   const texts = cloudTexts(s);
-  const all = countWords(texts);
-  const entries = all.filter(([w]) => !s.excluded.has(w)).slice(0, 70);
+  const memoHit = cloudMemo.key === JSON.stringify(texts);
   const pick = (attr, val, cur, text) =>
     `<button class="btn ${String(cur) === String(val) ? "on" : ""}" ${attr}="${val}">${text}</button>`;
 
@@ -572,13 +595,13 @@ function drawCloud(s) {
           ${pick("data-rnd", 2, s.cloudRound, "2차")}
           ${pick("data-rnd", "all", s.cloudRound, "1차+2차")}` : ""}
         <span class="spacer"></span>
-        <span class="count">글 ${texts.length}개 · 단어 ${all.length}개</span>
+        <span class="count" id="cloud-count">글 ${texts.length}개</span>
       </div>
 
       <div class="cloud" id="cloud">
-        ${entries.length ? "" : `<p class="wall-empty" style="padding-top:120px">아직 모인 글이 없습니다.</p>`}
+        ${memoHit ? "" : `<p class="cloud-status" id="cloud-status">단어를 분석하고 있습니다…</p>`}
       </div>
-      <p class="cloud-help">단어를 누르면 워드클라우드에서 뺍니다.</p>
+      <p class="cloud-help" id="cloud-help">단어를 누르면 워드클라우드에서 뺍니다.</p>
 
       ${s.excluded.size ? `
         <div class="excluded">
@@ -588,7 +611,20 @@ function drawCloud(s) {
         </div>` : ""}
     </div>`;
 
-  if (entries.length) layoutCloud($("#cloud"), entries);
+  const seq = ++cloudSeq;
+  const status = (html) => { const el = $("#cloud-status"); if (el && seq === cloudSeq) el.innerHTML = html; };
+  const show = ({ all, simple }) => {
+    if (seq !== cloudSeq || !$("#cloud")) return;   // 그사이 화면이 바뀌었으면 그리지 않는다
+    const entries = all.filter(([w]) => !s.excluded.has(w)).slice(0, 70);
+    $("#cloud-count").textContent = `글 ${texts.length}개 · 단어 ${all.length}개`;
+    $("#cloud-help").textContent = simple
+      ? "단어 분석기를 불러오지 못해 간단 방식(띄어쓰기·조사 자르기)으로 보여 줍니다. 단어를 누르면 뺍니다."
+      : "명사만 모았습니다. 단어를 누르면 워드클라우드에서 뺍니다.";
+    if (entries.length) layoutCloud($("#cloud"), entries);
+    else $("#cloud").innerHTML = `<p class="cloud-status">아직 모인 글이 없습니다.</p>`;
+  };
+  if (memoHit) show(cloudMemo);
+  else analyzeTexts(texts, status).then(show);
 }
 
 function loadExcluded(roomId) {
