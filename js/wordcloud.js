@@ -63,12 +63,14 @@ export function loadAnalyzer(onProgress) {
 // 글 목록 → [[명사, 횟수], ...] (많은 순)
 export async function countNouns(kiwi, texts) {
   const counts = new Map();
+  const shown = new Map();   // 영어는 대소문자를 묶어 세고, 처음 나온 모양으로 보여 준다(SNS, sns → SNS)
   for (const text of texts) {
     const tokens = await kiwi.tokenize(String(text ?? ""));
     for (const t of tokens) {
-      if (!NOUN_TAGS.has(t.tag)) continue;
-      const w = t.tag === "SL" ? t.str.toLowerCase() : t.str;
-      if (NOUN_STOP.has(w)) continue;
+      if (!NOUN_TAGS.has(t.tag) || NOUN_STOP.has(t.str)) continue;
+      const key = t.tag === "SL" ? t.str.toLowerCase() : t.str;
+      if (!shown.has(key)) shown.set(key, t.str);
+      const w = shown.get(key);
       counts.set(w, (counts.get(w) ?? 0) + 1);
     }
   }
