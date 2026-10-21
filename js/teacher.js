@@ -479,7 +479,9 @@ async function roomUpdate(s, data) {
     await updateDoc(doc(db, "rooms", s.roomId), data);
   } catch (ex) {
     console.error(ex);
-    toast("바꾸지 못했습니다.");
+    toast(ex.code === "permission-denied"
+      ? "권한이 없어 바꾸지 못했습니다. Firebase 보안 규칙을 최신으로 게시했는지 확인해 주세요."
+      : "바꾸지 못했습니다.");
   }
 }
 
