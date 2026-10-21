@@ -44,8 +44,8 @@ export function pmiStyle(type) {
   return `--pmi:${t.strong};--pmi-soft:${t.soft}`;
 }
 
-export const DEFAULT_LEFT = "매우 찬성";
-export const DEFAULT_RIGHT = "매우 반대";
+export const DEFAULT_LEFT = "매우 반대";
+export const DEFAULT_RIGHT = "매우 찬성";
 
 export function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({

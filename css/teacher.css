@@ -14,9 +14,14 @@
 
 /* ---------- 교사 화면: 방 ---------- */
 .t-room { padding: 14px 20px 40px; }
-.t-top { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
-/* 맨 위 왼쪽: [← 목록] + 단계 버튼 줄 */
-.t-left { align-self: flex-start; display: flex; flex-direction: column; gap: 10px; max-width: 46%; }
+/* 머리: 왼쪽(버튼) · 가운데(제목) · 오른쪽(QR). 양쪽 칸 폭을 같게 해서 제목이 화면 정가운데에 온다 */
+.t-top {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center; gap: 14px; margin-bottom: 14px;
+}
+.t-top > .qr-mini { justify-self: end; }
+/* 맨 위 왼쪽: [← 목록] + 단계 버튼 줄 + 도구 버튼 */
+.t-left { align-self: start; justify-self: start; display: flex; flex-direction: column; gap: 10px; max-width: 100%; }
 .t-left-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .t-left .t-tools { margin: 0; gap: 6px; }
 .t-left .t-tools .btn { font-size: 16px; min-height: 38px; padding: 5px 12px; }
@@ -25,7 +30,7 @@
 .t-left .stage { font-size: 16px; padding: 4px 12px 4px 4px; gap: 6px; }
 .t-left .stage-no { width: 24px; height: 24px; font-size: 13px; }
 .t-left .stage-arrow { font-size: 18px; }
-.t-title { flex: 1; min-width: 0; text-align: center; }
+.t-title { min-width: 0; max-width: min(52vw, 1000px); text-align: center; }
 .t-title h1 { font-size: clamp(24px, 2.8vw, 42px); line-height: 1.35; margin-top: 6px; }
 .qr-mini { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
 .qr-mini-img {
@@ -152,7 +157,8 @@
 
 @media (max-width: 700px) {
   .t-room { padding: 12px 8px 32px; }
-  .t-top { flex-wrap: wrap; }
+  .t-top { grid-template-columns: 1fr auto; }
+  .t-top > .t-title { grid-column: 1 / -1; grid-row: 2; max-width: none; }
 }
 
 /* 의견 카드 벽(교사) */
