@@ -551,8 +551,25 @@ function draw(s) {
     <div class="t-room">
       <header class="t-top">
         <div class="t-left">
-          <a class="btn btn-small" href="#" style="text-decoration:none">← 목록</a>
-          ${stageBar(s)}
+          <div class="t-left-row">
+            <a class="btn btn-small" href="#" style="text-decoration:none">← 목록</a>
+            ${stageBar(s)}
+          </div>
+          <div class="t-tools">
+            ${lineStage ? `
+              <button class="btn ${s.allMode ? "on" : ""}" data-act="all">모두 보기</button>
+              <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
+              ${round === 1
+                ? `<button class="btn btn-primary" data-act="again">다시 생각</button>`
+                : `<button class="btn ${s.showFirst ? "on" : ""}" data-act="first">1차 보기</button>`}
+              <button class="btn" data-act="cloud">워드클라우드</button>
+            ` : `
+              <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
+              <button class="btn btn-primary" data-act="puball">전체 공개</button>
+              <button class="btn" data-act="cloud">워드클라우드</button>
+            `}
+            <button class="btn ${s.manage ? "on" : ""}" data-act="manage">${s.manage ? "정리 끝" : "참여자 정리"}</button>
+          </div>
         </div>
         <div class="t-title">
           ${cardStage ? `<span class="badge">의견 카드</span>`
@@ -566,28 +583,11 @@ function draw(s) {
         </div>
       </header>
 
-      <div class="t-tools">
-        ${lineStage ? `
-          <button class="btn ${s.allMode ? "on" : ""}" data-act="all">모두 보기</button>
-          <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
-          ${round === 1
-            ? `<button class="btn btn-primary" data-act="again">다시 생각</button>`
-            : `<button class="btn ${s.showFirst ? "on" : ""}" data-act="first">1차 보기</button>`}
-          <button class="btn" data-act="cloud">워드클라우드</button>
-        ` : `
-          <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
-          <button class="btn btn-primary" data-act="puball">전체 공개</button>
-          <button class="btn" data-act="cloud">워드클라우드</button>
-        `}
-        <span class="spacer"></span>
-        <span class="count">${cardStage ? `카드 ${doneCount} / ${people.length}`
-          : pmiStage ? `쪽지 ${s.pmi.length}장 · 쓴 학생 ${doneCount} / ${people.length}`
-          : `${round}차 제출 ${doneCount} / ${people.length}`}</span>
-        <button class="btn ${s.manage ? "on" : ""}" data-act="manage">${s.manage ? "정리 끝" : "참여자 정리"}</button>
-      </div>
-
       <div class="chips ${s.manage ? "manage" : ""}">
         ${chips || `<span class="empty">학생이 입장하면 여기에 이름이 나타납니다.</span>`}
+        <span class="chips-count">${cardStage ? `카드 ${doneCount} / ${people.length}`
+          : pmiStage ? `쪽지 ${s.pmi.length}장 · ${doneCount} / ${people.length}명`
+          : `${round}차 제출 ${doneCount} / ${people.length}`}</span>
       </div>
 
       ${cardStage ? cardWall(s) : pmiStage ? `<div class="pmi-board" id="pmi-board"></div>` : `
