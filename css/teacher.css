@@ -178,7 +178,7 @@
 /* 워드클라우드 */
 .tool-sep { width: 2px; height: 30px; background: rgba(255,255,255,.35); margin: 0 4px; }
 .cloud {
-  position: relative; height: clamp(360px, 62vh, 760px); border-radius: var(--radius);
+  position: relative; height: clamp(380px, 72vh, 900px); border-radius: var(--radius);
   background: rgba(0,0,0,.14); overflow: hidden;
 }
 .cloud-word {

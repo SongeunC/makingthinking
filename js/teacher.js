@@ -786,29 +786,31 @@ function drawCloud(s) {
   root.innerHTML = `
     <div class="t-room">
       <header class="t-top">
-        <button class="btn" data-act="main">← 돌아가기</button>
+        <div class="t-left">
+          <div class="t-left-row">
+            <button class="btn btn-small" data-act="main">← 돌아가기</button>
+            <span class="count" id="cloud-count">글 ${texts.length}개</span>
+          </div>
+          <div class="t-tools">
+            ${pick("data-src", "cards", s.cloudSrc, "의견 카드")}
+            ${pick("data-src", "reason", s.cloudSrc, "수직선 이유")}
+            ${pick("data-src", "pmi", s.cloudSrc, "PMI")}
+            ${s.cloudSrc === "pmi" ? `
+              <span class="tool-sep"></span>
+              ${pick("data-pmi", "all", s.cloudPmi, "P+M+I")}
+              ${PMI_TYPES.map((t) => pick("data-pmi", t, s.cloudPmi, t)).join("")}` : ""}
+            ${s.cloudSrc === "reason" ? `
+              <span class="tool-sep"></span>
+              ${pick("data-rnd", 1, s.cloudRound, "1차")}
+              ${pick("data-rnd", 2, s.cloudRound, "2차")}
+              ${pick("data-rnd", "all", s.cloudRound, "1차+2차")}` : ""}
+          </div>
+        </div>
         <div class="t-title">
           <span class="badge">워드클라우드</span>
           <h1>${esc(s.room.topic)}</h1>
         </div>
       </header>
-
-      <div class="t-tools">
-        ${pick("data-src", "cards", s.cloudSrc, "의견 카드")}
-        ${pick("data-src", "reason", s.cloudSrc, "수직선 이유")}
-        ${pick("data-src", "pmi", s.cloudSrc, "PMI")}
-        ${s.cloudSrc === "pmi" ? `
-          <span class="tool-sep"></span>
-          ${pick("data-pmi", "all", s.cloudPmi, "P+M+I")}
-          ${PMI_TYPES.map((t) => pick("data-pmi", t, s.cloudPmi, t)).join("")}` : ""}
-        ${s.cloudSrc === "reason" ? `
-          <span class="tool-sep"></span>
-          ${pick("data-rnd", 1, s.cloudRound, "1차")}
-          ${pick("data-rnd", 2, s.cloudRound, "2차")}
-          ${pick("data-rnd", "all", s.cloudRound, "1차+2차")}` : ""}
-        <span class="spacer"></span>
-        <span class="count" id="cloud-count">글 ${texts.length}개</span>
-      </div>
 
       <div class="cloud" id="cloud">
         ${memoHit ? "" : `<p class="cloud-status" id="cloud-status">단어를 분석하고 있습니다…</p>`}
