@@ -607,18 +607,12 @@ function draw(s) {
 }
 
 // ---------- PMI 보드 ----------
-// 큰 P·M·I 원 세 개를 두고, 쪽지를 자기 원 둘레에 나선을 따라 겹치지 않게 붙인다.
-
-const HUBS = { P: { x: 0.75, y: 0.3 }, M: { x: 0.26, y: 0.38 }, I: { x: 0.52, y: 0.7 } };
-const HUB_START = { P: -0.6, M: 3.4, I: 1.6 };   // 원마다 쪽지를 붙이기 시작하는 방향(라디안)
+// P · M · I 세 칸을 나란히 두고, 칸마다 쪽지를 붙인 순서대로 가지런히 쌓는다.
 
 function drawPmiBoard(s) {
   const board = $("#pmi-board");
   if (!board) return;
-  const W = board.clientWidth;
-  const R = Math.round(Math.max(62, Math.min(118, W * 0.068)));
   const hide = !!s.room.hideNames;
-  const byType = (t) => s.pmi.filter((n) => n.type === t).length;
   const who = (n) => {
     if (!hide) return n.name;
     const i = s.people.findIndex((p) => p.uid === n.uid);
@@ -626,78 +620,30 @@ function drawPmiBoard(s) {
   };
   const tag = { new: "공개 전", hidden: "숨김" };
 
-  board.innerHTML = PMI_TYPES.map((t) => `
-    <div class="pmi-hub" data-type="${t}" style="${pmiStyle(t)};width:${R * 2}px;height:${R * 2}px">
-      <b>${t}</b><span>(${PMI[t].label})</span><small>${PMI[t].ask}</small><em>${byType(t)}</em>
-    </div>`).join("")
-    + s.pmi.map((n) => `
-    <button class="pmi-note st-${n.status} ${s.pmiFocus && s.pmiFocus !== n.uid ? "dim" : ""}" data-id="${n.id}" style="${pmiStyle(n.type)}">
-      <span class="pmi-note-head">
-        <span class="pmi-dot">${n.type}</span>
-        <span class="pmi-name">${esc(who(n))}</span>
-        ${tag[n.status] ? `<span class="note-tag">${tag[n.status]}</span>` : ""}
-      </span>
-      <span class="pmi-note-text">${esc(n.text)}</span>
-    </button>`).join("")
-    + (s.pmi.length ? "" : `<p class="pmi-empty">학생들이 쪽지를 붙이면 P·M·I 원 둘레에 모입니다.</p>`);
-
-  const hubs = [...board.querySelectorAll(".pmi-hub")];
-  const notes = [...board.querySelectorAll(".pmi-note")];
-  const sizes = notes.map((el) => ({ w: el.offsetWidth, h: el.offsetHeight }));
-
-  // 자리가 모자라면 보드를 키워서 다시 놓는다
-  let H = Math.max(560, Math.round(window.innerHeight * 0.72));
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const spots = placePmi(s.pmi, sizes, W, H, R);
-    if (spots) {
-      board.style.height = `${H}px`;
-      hubs.forEach((el) => {
-        const c = HUBS[el.dataset.type];
-        el.style.left = `${c.x * W - R}px`;
-        el.style.top = `${c.y * H - R}px`;
-      });
-      notes.forEach((el, i) => {
-        el.style.left = `${spots[i].x}px`;
-        el.style.top = `${spots[i].y}px`;
-      });
-      return;
-    }
-    H = Math.round(H * 1.25);
-  }
+  board.innerHTML = PMI_TYPES.map((t) => {
+    const notes = s.pmi.filter((n) => n.type === t);
+    return `
+      <section class="pmi-col" style="${pmiStyle(t)}">
+        <header class="pmi-col-head">
+          <span class="pmi-hub">${t}</span>
+          <span class="pmi-col-title"><b>${PMI[t].label}</b><small>${PMI[t].ask}</small></span>
+          <span class="pmi-col-count">${notes.length}</span>
+        </header>
+        <div class="pmi-col-notes">
+          ${notes.length ? notes.map((n) => `
+            <button class="pmi-note st-${n.status} ${s.pmiFocus && s.pmiFocus !== n.uid ? "dim" : ""}" data-id="${n.id}">
+              <span class="pmi-note-head">
+                <span class="pmi-dot">${n.type}</span>
+                <span class="pmi-name">${esc(who(n))}</span>
+                ${tag[n.status] ? `<span class="note-tag">${tag[n.status]}</span>` : ""}
+              </span>
+              <span class="pmi-note-text">${esc(n.text)}</span>
+            </button>`).join("") : `<p class="pmi-col-empty">아직 쪽지가 없습니다.</p>`}
+        </div>
+      </section>`;
+  }).join("");
 }
 
-function placePmi(list, sizes, W, H, R) {
-  const GAP = 6;
-  const circles = PMI_TYPES.map((t) => ({ x: HUBS[t].x * W, y: HUBS[t].y * H, r: R + GAP }));
-  const placed = [];
-  const hitsCircle = (x, y, w, h) => circles.some((c) => {
-    const dx = c.x - Math.max(x, Math.min(c.x, x + w));
-    const dy = c.y - Math.max(y, Math.min(c.y, y + h));
-    return dx * dx + dy * dy < c.r * c.r;
-  });
-  const hitsNote = (x, y, w, h) => placed.some((p) =>
-    x < p.x + p.w + GAP && x + w + GAP > p.x && y < p.y + p.h + GAP && y + h + GAP > p.y);
-
-  for (let i = 0; i < list.length; i++) {
-    const { w, h } = sizes[i];
-    const hub = HUBS[list[i].type];
-    const cx = hub.x * W;
-    const cy = hub.y * H;
-    let spot = null;
-    for (let step = 0; step < 2500 && !spot; step++) {
-      const a = HUB_START[list[i].type] + step * 0.22;
-      const r = R * 0.9 + 3.2 * step * 0.22 * 2.2;
-      const x = cx + r * Math.cos(a) * 1.35 - w / 2;   // 가로로 조금 더 넓게 퍼지게
-      const y = cy + r * Math.sin(a) - h / 2;
-      if (x < 4 || y < 4 || x + w > W - 4 || y + h > H - 4) continue;
-      if (hitsCircle(x, y, w, h) || hitsNote(x, y, w, h)) continue;
-      spot = { x, y, w, h };
-    }
-    if (!spot) return null;
-    placed.push(spot);
-  }
-  return placed;
-}
 
 // 쪽지를 누르면: 전체 글 보기 + 공개·숨기기·삭제
 function openNote(s, id) {
