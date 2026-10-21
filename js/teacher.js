@@ -550,7 +550,10 @@ function draw(s) {
   root.innerHTML = `
     <div class="t-room">
       <header class="t-top">
-        <a class="btn" href="#" style="text-decoration:none">← 목록</a>
+        <div class="t-left">
+          <a class="btn btn-small" href="#" style="text-decoration:none">← 목록</a>
+          ${stageBar(s)}
+        </div>
         <div class="t-title">
           ${cardStage ? `<span class="badge">의견 카드</span>`
             : pmiStage ? `<span class="badge">PMI</span>`
@@ -562,8 +565,6 @@ function draw(s) {
           <button class="btn btn-small" data-act="copy">링크 복사</button>
         </div>
       </header>
-
-      ${stageBar(s)}
 
       <div class="t-tools">
         ${lineStage ? `
