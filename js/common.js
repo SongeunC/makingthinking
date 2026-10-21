@@ -31,6 +31,19 @@ export function likeCount(card) {
   return Object.keys(card.likes ?? {}).length;
 }
 
+// PMI 칸. strong: 원·글자 색, soft: 쪽지 바탕색
+export const PMI = {
+  P: { label: "Plus", ask: "좋은 점은?", strong: "#2f7fc8", soft: "#d3e8f8" },
+  M: { label: "Minus", ask: "나쁜 점은?", strong: "#d1456f", soft: "#f9d6e0" },
+  I: { label: "Interesting", ask: "흥미로운 점은?", strong: "#3d9a5b", soft: "#d6efd6" },
+};
+export const PMI_TYPES = ["P", "M", "I"];
+
+export function pmiStyle(type) {
+  const t = PMI[type] ?? PMI.P;
+  return `--pmi:${t.strong};--pmi-soft:${t.soft}`;
+}
+
 export const DEFAULT_LEFT = "매우 찬성";
 export const DEFAULT_RIGHT = "매우 반대";
 

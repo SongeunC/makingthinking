@@ -1,7 +1,7 @@
 import { app } from "./firebase.js";
 import {
   POSITIONS, DEFAULT_LEFT, DEFAULT_RIGHT, esc, $, moveLabel, confirmDialog, toast, posStyle,
-  cardColor, likeCount,
+  cardColor, likeCount, PMI, PMI_TYPES, pmiStyle,
 } from "./common.js";
 import { countWords, countNouns, loadAnalyzer, layoutCloud } from "./wordcloud.js";
 import {
@@ -208,12 +208,13 @@ async function createRoom(e) {
 
 // 방에 딸린 참여자·이름 기록을 모두 지운 뒤 방과 접속 코드를 지운다
 async function deleteRoom(r) {
-  const [ps, ns, cs] = await Promise.all([
+  const [ps, ns, cs, pm] = await Promise.all([
     getDocs(collection(db, "rooms", r.id, "participants")),
     getDocs(collection(db, "rooms", r.id, "names")),
     getDocs(collection(db, "rooms", r.id, "cards")),
+    getDocs(collection(db, "rooms", r.id, "pmi")),
   ]);
-  await Promise.all([...ps.docs, ...ns.docs, ...cs.docs].map((d) => deleteDoc(d.ref)));
+  await Promise.all([...ps.docs, ...ns.docs, ...cs.docs, ...pm.docs].map((d) => deleteDoc(d.ref)));
   await deleteDoc(doc(db, "codes", r.code));
   await deleteDoc(doc(db, "rooms", r.id));
 }
@@ -230,11 +231,14 @@ function openRoom(roomId) {
     expanded: new Set(),     // 이유 상자가 열린 학생
     full: new Set(),         // 접힌 이유를 펼친 화살표 ("uid:1" / "uid:2")
     cards: [],               // 의견 카드, 낸 순서대로
-    showFirst: false,        // 2차 때 1차 화살표 함께 보기
+    pmi: [],                 // PMI 쪽지, 붙인 순서대로
+    pmiFocus: null,          // 칩으로 고른 학생(그 학생 쪽지만 또렷하게)
+    showFirst: false,       // 2차 때 1차 화살표 함께 보기
     manage: false,           // 참여자 정리(삭제) 모드
     view: "main",            // main | cloud(워드클라우드)
     cloudSrc: null,          // cards | reason
     cloudRound: null,        // 1 | 2 | "all"
+    cloudPmi: "all",         // all | P | M | I
     excluded: loadExcluded(roomId),
   };
 
@@ -266,7 +270,19 @@ function openRoom(roomId) {
     draw(s);
   }, (ex) => console.error(ex)));
 
+  unsubs.push(onSnapshot(collection(db, "rooms", roomId, "pmi"), (snap) => {
+    s.pmi = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.at?.toMillis?.() ?? Infinity) - (b.at?.toMillis?.() ?? Infinity) || a.id.localeCompare(b.id));
+    draw(s);
+  }, (ex) => console.error(ex)));
+
   root.onclick = (e) => onRoomClick(e, s);
+
+  // 창 크기가 바뀌면 PMI 보드·워드클라우드를 다시 배치한다
+  let resizeTimer = 0;
+  const onResize = () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => draw(s), 200); };
+  window.addEventListener("resize", onResize);
+  unsubs.push(() => window.removeEventListener("resize", onResize));
 }
 
 function isShown(s, uid) {
@@ -310,6 +326,18 @@ async function onRoomClick(e, s) {
     return draw(s);
   }
 
+  const pmiPick = t.closest("[data-pmi]");
+  if (pmiPick) {
+    s.cloudPmi = pmiPick.dataset.pmi;
+    return draw(s);
+  }
+
+  const stageBtn = t.closest("[data-stage]");
+  if (stageBtn) return changeStage(s, stageBtn.dataset.stage);
+
+  const pmiNote = t.closest(".pmi-board .pmi-note");
+  if (pmiNote) return openNote(s, pmiNote.dataset.id);
+
   const cardAct = t.closest("[data-card-act]");
   if (cardAct) return onCardAction(s, cardAct.dataset.cardAct, cardAct.dataset.uid);
 
@@ -321,6 +349,11 @@ async function onRoomClick(e, s) {
       // 카드 단계: 그 학생의 카드로 이동
       root.querySelector(`.note[data-uid="${uid}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
+    }
+    if (s.room.stage === "pmi") {
+      // PMI 단계: 그 학생 쪽지만 또렷하게(다시 누르면 해제)
+      s.pmiFocus = s.pmiFocus === uid ? null : uid;
+      return draw(s);
     }
     toggleStudent(s, uid);
     return draw(s);
@@ -346,31 +379,26 @@ async function onRoomClick(e, s) {
   } else if (act === "hide") {
     // 방에 저장해서 학생 카드 화면에도 함께 적용되고, 다시 열어도 그대로 남는다
     return roomUpdate(s, { hideNames: !s.room.hideNames });
-  } else if (act === "next") {
-    const ok = await confirmDialog({
-      title: "의견 카드 단계로 넘어갈까요?",
-      body: "학생 화면이 의견 카드 쓰기로 바뀝니다. 수직선 결과는 그대로 남고, 언제든 수직선으로 돌아올 수 있습니다.",
-      ok: "넘어가기",
-    });
-    if (ok) await roomUpdate(s, { stage: "cards" });
-    return;
   } else if (act === "cloud") {
     s.view = "cloud";
-    s.cloudSrc ??= s.room.stage === "cards" ? "cards" : "reason";
+    s.cloudSrc ??= { cards: "cards", pmi: "pmi" }[s.room.stage] ?? "reason";
     s.cloudRound ??= s.room.round === 2 ? "all" : 1;
   } else if (act === "main") {
     s.view = "main";
-  } else if (act === "toline") {
-    return roomUpdate(s, { stage: "line" });
   } else if (act === "puball") {
-    const targets = s.cards.filter((c) => c.status === "new");
-    if (!targets.length) return toast("새로 공개할 카드가 없습니다.");
+    // 지금 단계(의견 카드 / PMI)의 공개 전 글을 모두 공개
+    const isPmi = s.room.stage === "pmi";
+    const targets = isPmi
+      ? s.pmi.filter((n) => n.status === "new").map((n) => doc(db, "rooms", s.roomId, "pmi", n.id))
+      : s.cards.filter((c) => c.status === "new").map((c) => doc(db, "rooms", s.roomId, "cards", c.uid));
+    const unit = isPmi ? "쪽지" : "카드";
+    if (!targets.length) return toast(`새로 공개할 ${unit}가 없습니다.`);
     try {
-      await Promise.all(targets.map((c) => updateDoc(doc(db, "rooms", s.roomId, "cards", c.uid), { status: "public" })));
-      toast(`카드 ${targets.length}장을 공개했습니다.`);
+      await Promise.all(targets.map((ref) => updateDoc(ref, { status: "public" })));
+      toast(`${unit} ${targets.length}장을 공개했습니다.`);
     } catch (ex) {
       console.error(ex);
-      toast("공개하지 못한 카드가 있습니다.");
+      toast(`공개하지 못한 ${unit}가 있습니다.`);
     }
     return;
   } else if (act === "first") {
@@ -410,6 +438,7 @@ async function removePerson(s, uid) {
   });
   if (!ok) return;
   try {
+    await Promise.all(s.pmi.filter((n) => n.uid === uid).map((n) => deleteDoc(doc(db, "rooms", s.roomId, "pmi", n.id))));
     await deleteDoc(doc(db, "rooms", s.roomId, "cards", uid));
     await deleteDoc(doc(db, "rooms", s.roomId, "participants", uid));
     await deleteDoc(doc(db, "rooms", s.roomId, "names", p.name));
@@ -417,6 +446,32 @@ async function removePerson(s, uid) {
     console.error(ex);
     toast("삭제하지 못했습니다.");
   }
+}
+
+const STAGES = [
+  { id: "line", label: "가치수직선" },
+  { id: "pmi", label: "PMI" },
+  { id: "cards", label: "의견 카드" },
+];
+
+async function changeStage(s, stage) {
+  const cur = s.room.stage ?? "line";
+  if (stage === cur) return;
+  const label = STAGES.find((x) => x.id === stage)?.label ?? stage;
+  const ok = await confirmDialog({
+    title: `${label} 단계로 넘어갈까요?`,
+    body: `학생 화면이 ${label}(으)로 바뀝니다. 다른 단계의 기록은 그대로 남고, 언제든 다시 돌아올 수 있습니다.`,
+    ok: "넘어가기",
+  });
+  if (ok) await roomUpdate(s, { stage });
+}
+
+function stageBar(s) {
+  const cur = s.room.stage ?? "line";
+  return `<nav class="stages">${STAGES.map((st, i) => `
+    <button class="stage ${st.id === cur ? "on" : ""}" data-stage="${st.id}">
+      <span class="stage-no">${i + 1}</span>${st.label}
+    </button>`).join(`<span class="stage-arrow">›</span>`)}</nav>`;
 }
 
 async function roomUpdate(s, data) {
@@ -463,19 +518,26 @@ function draw(s) {
   if (!room) return;
   if (s.view === "cloud") return drawCloud(s);
   const round = room.round;
-  const cardStage = room.stage === "cards";
+  const stage = room.stage ?? "line";
+  const cardStage = stage === "cards";
+  const pmiStage = stage === "pmi";
+  const lineStage = stage === "line";
   const cardBy = new Map(s.cards.map((c) => [c.uid, c]));
-  const isDone = (p) => (cardStage ? cardBy.has(p.uid) : !!p[`r${round}`]);
+  const pmiCount = new Map();
+  for (const n of s.pmi) pmiCount.set(n.uid, (pmiCount.get(n.uid) ?? 0) + 1);
+  const isDone = (p) => (cardStage ? cardBy.has(p.uid) : pmiStage ? pmiCount.has(p.uid) : !!p[`r${round}`]);
   const doneCount = people.filter(isDone).length;
 
   const chips = people.map((p) => {
     const done = isDone(p);
-    const mv = round === 2 && !cardStage ? moveLabel(p) : "";
-    const cls = ["chip", done && "done", !cardStage && isShown(s, p.uid) && "shown", !cardStage && s.expanded.has(p.uid) && "expanded"].filter(Boolean).join(" ");
+    const mv = round === 2 && lineStage ? moveLabel(p) : "";
+    const focus = pmiStage && s.pmiFocus === p.uid;
+    const cls = ["chip", done && "done", lineStage && isShown(s, p.uid) && "shown", (lineStage && s.expanded.has(p.uid) || focus) && "expanded"].filter(Boolean).join(" ");
     return `<button class="${cls}" data-uid="${p.uid}" title="${done ? "제출함" : "아직 안 냄"}">
       <span class="chk">${done ? "✓" : "…"}</span>
       <span>${esc(label(s, p))}</span>
       ${mv ? `<span class="move">${mv}</span>` : ""}
+      ${pmiStage && pmiCount.has(p.uid) ? `<span class="move">${pmiCount.get(p.uid)}</span>` : ""}
       ${s.manage ? `<span class="x">✕</span>` : ""}
     </button>`;
   }).join("");
@@ -488,8 +550,8 @@ function draw(s) {
       <header class="t-top">
         <a class="btn" href="#" style="text-decoration:none">← 목록</a>
         <div class="t-title">
-          ${cardStage
-            ? `<span class="badge">의견 카드</span>`
+          ${cardStage ? `<span class="badge">의견 카드</span>`
+            : pmiStage ? `<span class="badge">PMI</span>`
             : `<span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>`}
           <h1>${esc(room.topic)}</h1>
         </div>
@@ -499,23 +561,25 @@ function draw(s) {
         </div>
       </header>
 
+      ${stageBar(s)}
+
       <div class="t-tools">
-        ${cardStage ? `
-          <button class="btn" data-act="toline">← 수직선</button>
-          <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
-          <button class="btn btn-primary" data-act="puball">전체 공개</button>
-          <button class="btn" data-act="cloud">워드클라우드</button>
-        ` : `
+        ${lineStage ? `
           <button class="btn ${s.allMode ? "on" : ""}" data-act="all">모두 보기</button>
           <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
           ${round === 1
             ? `<button class="btn btn-primary" data-act="again">다시 생각</button>`
             : `<button class="btn ${s.showFirst ? "on" : ""}" data-act="first">1차 보기</button>`}
-          <button class="btn" data-act="next">다음: 의견 카드 →</button>
+          <button class="btn" data-act="cloud">워드클라우드</button>
+        ` : `
+          <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
+          <button class="btn btn-primary" data-act="puball">전체 공개</button>
           <button class="btn" data-act="cloud">워드클라우드</button>
         `}
         <span class="spacer"></span>
-        <span class="count">${cardStage ? "카드" : `${round}차 제출`} ${doneCount} / ${people.length}</span>
+        <span class="count">${cardStage ? `카드 ${doneCount} / ${people.length}`
+          : pmiStage ? `쪽지 ${s.pmi.length}장 · 쓴 학생 ${doneCount} / ${people.length}`
+          : `${round}차 제출 ${doneCount} / ${people.length}`}</span>
         <button class="btn ${s.manage ? "on" : ""}" data-act="manage">${s.manage ? "정리 끝" : "참여자 정리"}</button>
       </div>
 
@@ -523,7 +587,7 @@ function draw(s) {
         ${chips || `<span class="empty">학생이 입장하면 여기에 이름이 나타납니다.</span>`}
       </div>
 
-      ${cardStage ? cardWall(s) : `
+      ${cardStage ? cardWall(s) : pmiStage ? `<div class="pmi-board" id="pmi-board"></div>` : `
       <div class="board">
         ${showUp ? lane(s, 2, "up") : ""}
         <div class="grid13 axis">
@@ -536,12 +600,152 @@ function draw(s) {
     </div>`;
 
   markClamped();
+  if (pmiStage) drawPmiBoard(s);
+}
+
+// ---------- PMI 보드 ----------
+// 큰 P·M·I 원 세 개를 두고, 쪽지를 자기 원 둘레에 나선을 따라 겹치지 않게 붙인다.
+
+const HUBS = { P: { x: 0.75, y: 0.3 }, M: { x: 0.26, y: 0.38 }, I: { x: 0.52, y: 0.7 } };
+const HUB_START = { P: -0.6, M: 3.4, I: 1.6 };   // 원마다 쪽지를 붙이기 시작하는 방향(라디안)
+
+function drawPmiBoard(s) {
+  const board = $("#pmi-board");
+  if (!board) return;
+  const W = board.clientWidth;
+  const R = Math.round(Math.max(62, Math.min(118, W * 0.068)));
+  const hide = !!s.room.hideNames;
+  const byType = (t) => s.pmi.filter((n) => n.type === t).length;
+  const who = (n) => {
+    if (!hide) return n.name;
+    const i = s.people.findIndex((p) => p.uid === n.uid);
+    return i >= 0 ? `${i + 1}번` : "";
+  };
+  const tag = { new: "공개 전", hidden: "숨김" };
+
+  board.innerHTML = PMI_TYPES.map((t) => `
+    <div class="pmi-hub" data-type="${t}" style="${pmiStyle(t)};width:${R * 2}px;height:${R * 2}px">
+      <b>${t}</b><span>(${PMI[t].label})</span><small>${PMI[t].ask}</small><em>${byType(t)}</em>
+    </div>`).join("")
+    + s.pmi.map((n) => `
+    <button class="pmi-note st-${n.status} ${s.pmiFocus && s.pmiFocus !== n.uid ? "dim" : ""}" data-id="${n.id}" style="${pmiStyle(n.type)}">
+      <span class="pmi-note-head">
+        <span class="pmi-dot">${n.type}</span>
+        <span class="pmi-name">${esc(who(n))}</span>
+        ${tag[n.status] ? `<span class="note-tag">${tag[n.status]}</span>` : ""}
+      </span>
+      <span class="pmi-note-text">${esc(n.text)}</span>
+    </button>`).join("")
+    + (s.pmi.length ? "" : `<p class="pmi-empty">학생들이 쪽지를 붙이면 P·M·I 원 둘레에 모입니다.</p>`);
+
+  const hubs = [...board.querySelectorAll(".pmi-hub")];
+  const notes = [...board.querySelectorAll(".pmi-note")];
+  const sizes = notes.map((el) => ({ w: el.offsetWidth, h: el.offsetHeight }));
+
+  // 자리가 모자라면 보드를 키워서 다시 놓는다
+  let H = Math.max(560, Math.round(window.innerHeight * 0.72));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const spots = placePmi(s.pmi, sizes, W, H, R);
+    if (spots) {
+      board.style.height = `${H}px`;
+      hubs.forEach((el) => {
+        const c = HUBS[el.dataset.type];
+        el.style.left = `${c.x * W - R}px`;
+        el.style.top = `${c.y * H - R}px`;
+      });
+      notes.forEach((el, i) => {
+        el.style.left = `${spots[i].x}px`;
+        el.style.top = `${spots[i].y}px`;
+      });
+      return;
+    }
+    H = Math.round(H * 1.25);
+  }
+}
+
+function placePmi(list, sizes, W, H, R) {
+  const GAP = 6;
+  const circles = PMI_TYPES.map((t) => ({ x: HUBS[t].x * W, y: HUBS[t].y * H, r: R + GAP }));
+  const placed = [];
+  const hitsCircle = (x, y, w, h) => circles.some((c) => {
+    const dx = c.x - Math.max(x, Math.min(c.x, x + w));
+    const dy = c.y - Math.max(y, Math.min(c.y, y + h));
+    return dx * dx + dy * dy < c.r * c.r;
+  });
+  const hitsNote = (x, y, w, h) => placed.some((p) =>
+    x < p.x + p.w + GAP && x + w + GAP > p.x && y < p.y + p.h + GAP && y + h + GAP > p.y);
+
+  for (let i = 0; i < list.length; i++) {
+    const { w, h } = sizes[i];
+    const hub = HUBS[list[i].type];
+    const cx = hub.x * W;
+    const cy = hub.y * H;
+    let spot = null;
+    for (let step = 0; step < 2500 && !spot; step++) {
+      const a = HUB_START[list[i].type] + step * 0.22;
+      const r = R * 0.9 + 3.2 * step * 0.22 * 2.2;
+      const x = cx + r * Math.cos(a) * 1.35 - w / 2;   // 가로로 조금 더 넓게 퍼지게
+      const y = cy + r * Math.sin(a) - h / 2;
+      if (x < 4 || y < 4 || x + w > W - 4 || y + h > H - 4) continue;
+      if (hitsCircle(x, y, w, h) || hitsNote(x, y, w, h)) continue;
+      spot = { x, y, w, h };
+    }
+    if (!spot) return null;
+    placed.push(spot);
+  }
+  return placed;
+}
+
+// 쪽지를 누르면: 전체 글 보기 + 공개·숨기기·삭제
+function openNote(s, id) {
+  const n = s.pmi.find((x) => x.id === id);
+  if (!n) return;
+  const ref = doc(db, "rooms", s.roomId, "pmi", id);
+  const dlg = document.createElement("dialog");
+  dlg.className = "dlg";
+  dlg.innerHTML = `
+    <div style="padding:22px">
+      <div class="pmi-note-head" style="${pmiStyle(n.type)};margin-bottom:10px">
+        <span class="pmi-dot">${n.type}</span>
+        <b style="font-weight:400;font-size:20px">${esc(s.room.hideNames ? "" : n.name)}</b>
+        <span class="muted small">${PMI[n.type].label} · ${PMI[n.type].ask}</span>
+      </div>
+      <div class="dlg-quote" style="font-size:18px;max-height:50vh">${esc(n.text)}</div>
+      <div class="dlg-actions">
+        <button class="btn btn-danger" data-v="del">삭제</button>
+        <span style="flex:1"></span>
+        ${n.status === "public"
+          ? `<button class="btn" data-v="hidden">숨기기</button>`
+          : `<button class="btn btn-primary" data-v="public">공개</button>`}
+        <button class="btn" data-v="close">닫기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(dlg);
+  const close = () => { if (dlg.open) dlg.close(); dlg.remove(); };
+  dlg.addEventListener("cancel", (e) => { e.preventDefault(); close(); });
+  dlg.addEventListener("click", async (e) => {
+    if (e.target === dlg) return close();   // 바깥(배경)을 누르면 닫기
+    const v = e.target.closest("[data-v]")?.dataset.v;
+    if (!v) return;
+    close();
+    try {
+      if (v === "del") await deleteDoc(ref);
+      else if (v === "public" || v === "hidden") await updateDoc(ref, { status: v });
+    } catch (ex) {
+      console.error(ex);
+      toast("처리하지 못했습니다.");
+    }
+  });
+  dlg.showModal();
 }
 
 // ---------- 워드클라우드 ----------
 
 function cloudTexts(s) {
   if (s.cloudSrc === "cards") return s.cards.filter((c) => c.status !== "hidden").map((c) => c.text);
+  if (s.cloudSrc === "pmi") {
+    return s.pmi.filter((n) => n.status !== "hidden" && (s.cloudPmi === "all" || n.type === s.cloudPmi)).map((n) => n.text);
+  }
   const rounds = s.cloudRound === "all" ? [1, 2] : [s.cloudRound];
   return s.people.flatMap((p) => rounds.map((r) => p[`r${r}`]?.reason).filter(Boolean));
 }
@@ -589,6 +793,11 @@ function drawCloud(s) {
       <div class="t-tools">
         ${pick("data-src", "cards", s.cloudSrc, "의견 카드")}
         ${pick("data-src", "reason", s.cloudSrc, "수직선 이유")}
+        ${pick("data-src", "pmi", s.cloudSrc, "PMI")}
+        ${s.cloudSrc === "pmi" ? `
+          <span class="tool-sep"></span>
+          ${pick("data-pmi", "all", s.cloudPmi, "P+M+I")}
+          ${PMI_TYPES.map((t) => pick("data-pmi", t, s.cloudPmi, t)).join("")}` : ""}
         ${s.cloudSrc === "reason" ? `
           <span class="tool-sep"></span>
           ${pick("data-rnd", 1, s.cloudRound, "1차")}

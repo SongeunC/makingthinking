@@ -186,3 +186,52 @@
 .ex-word.all { border-style: solid; }
 .cloud-status { color: var(--chalk-soft); text-align: center; padding-top: 140px; font-size: 20px; line-height: 1.6; }
 .cloud-status small { font-size: 15px; }
+
+/* 단계 버튼 줄 */
+.stages { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.stage {
+  display: inline-flex; align-items: center; gap: 8px; border: 2px solid rgba(255,255,255,.35);
+  background: transparent; color: var(--chalk-soft); border-radius: 999px; padding: 6px 16px 6px 6px; font-size: 18px;
+}
+.stage-no {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255,255,255,.18); color: var(--chalk); font-size: 15px;
+}
+.stage.on { background: var(--chalk); border-color: var(--chalk); color: var(--board-deep); }
+.stage.on .stage-no { background: var(--accent); color: var(--accent-ink); }
+.stage-arrow { color: var(--chalk-soft); font-size: 22px; }
+
+/* PMI 보드 */
+.pmi-board {
+  position: relative; min-height: 560px; border-radius: 22px; overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,.06) 0 30%, transparent 30.2%),
+    radial-gradient(circle at 50% 50%, transparent 0 46%, rgba(255,255,255,.07) 46.2% 46.6%, transparent 46.8%),
+    rgba(0,0,0,.12);
+}
+.pmi-hub {
+  position: absolute; border-radius: 50%; background: #fff; color: var(--pmi);
+  border: 5px solid var(--pmi); box-shadow: 0 6px 18px rgba(0,0,0,.28);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 1;
+}
+.pmi-hub b { font-size: clamp(40px, 4.6vw, 76px); font-weight: 400; line-height: 1; }
+.pmi-hub span { font-size: clamp(13px, 1.1vw, 18px); }
+.pmi-hub small { font-size: clamp(12px, 1vw, 16px); color: var(--ink-soft); }
+.pmi-hub em {
+  position: absolute; top: -6px; right: -6px; font-style: normal; min-width: 30px; height: 30px; padding: 0 6px;
+  border-radius: 999px; background: var(--pmi); color: #fff; font-size: 16px; display: flex; align-items: center; justify-content: center;
+}
+.pmi-board .pmi-note {
+  position: absolute; width: clamp(150px, 12vw, 220px); text-align: left; border: none; cursor: pointer;
+  display: block; padding: 8px 10px; z-index: 2; transition: transform .12s, box-shadow .12s;
+}
+.pmi-board .pmi-note:hover { transform: scale(1.04); box-shadow: 0 6px 14px rgba(0,0,0,.3); z-index: 3; }
+.pmi-board .pmi-note .pmi-note-head { margin-bottom: 4px; }
+.pmi-board .pmi-note .pmi-note-text {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: clamp(13px, 1vw, 16px); line-height: 1.4;
+}
+.pmi-board .pmi-note.st-new { outline: 3px dashed rgba(255,255,255,.9); outline-offset: 1px; opacity: .85; }
+.pmi-board .pmi-note.st-hidden { opacity: .4; filter: grayscale(.7); }
+.pmi-board .pmi-note.dim { opacity: .18; }
+.pmi-empty { position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; color: var(--chalk-soft); margin: 0; }

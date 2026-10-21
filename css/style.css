@@ -176,3 +176,30 @@ a { color: var(--accent); }
   display: block; margin: 8px auto 0; border: none; background: transparent; color: var(--chalk-soft);
   font-size: 13px; text-decoration: underline; padding: 4px;
 }
+
+/* ---------- PMI ---------- */
+.pmi-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pmi-type {
+  border: 3px solid var(--pmi); background: #fff; color: var(--pmi); border-radius: 14px;
+  padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 76px;
+}
+.pmi-type b { font-size: 30px; font-weight: 400; line-height: 1; }
+.pmi-type span { font-size: 14px; }
+.pmi-type.on { background: var(--pmi); color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,.2); }
+.pmi-mine { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.pmi-note {
+  background: var(--pmi-soft); color: var(--ink); border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 2px 0 rgba(0,0,0,.15); min-width: 0;
+}
+.pmi-note-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pmi-dot {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 24px; height: 24px; border-radius: 50%; background: var(--pmi); color: #fff; font-size: 14px;
+}
+.pmi-name { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmi-note-head .note-tag { margin-left: auto; }
+.pmi-note-text { font-family: var(--font-text); font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.pmi-group { margin-bottom: 18px; display: grid; gap: 8px; }
+.pmi-group h3 { color: var(--chalk); font-size: 20px; display: flex; align-items: center; gap: 8px; margin: 0 0 2px; }
+.pmi-group h3 small { color: var(--chalk-soft); font-size: 15px; }
+.pmi-group h3 .pmi-dot { width: 30px; height: 30px; font-size: 18px; }

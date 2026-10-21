@@ -8,7 +8,8 @@ rules_version = '2';
 //   rooms/{roomId}/participants/{uid}     { name, joinedAt, r1?: {pos, reason, at}, r2?: {...} }
 //   rooms/{roomId}/names/{이름}            { uid }   같은 이름 중복 방지용
 //   rooms/{roomId}/cards/{uid}            { name, text, at, status, likes }   의견 카드
-//   rooms 의 선택 필드: stage('line'|'cards'), hideNames(bool)
+//   rooms/{roomId}/pmi/{자동ID}           { uid, name, type, text, at, status }   PMI 쪽지
+//   rooms 의 선택 필드: stage('line'|'pmi'|'cards'), hideNames(bool)
 //
 // 교사: 구글 로그인. 학생: 익명 로그인(새로 들어올 때마다 새 uid).
 // 학생은 자기 participants 문서만 읽을 수 있다. 다른 학생의 선택·이유는 읽을 수 없다.
@@ -72,7 +73,7 @@ service cloud.firestore {
         && resource.data.ownerUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['round', 'topic', 'leftLabel', 'rightLabel', 'stage', 'hideNames'])
         && request.resource.data.round in [1, 2]
-        && (!('stage' in request.resource.data) || request.resource.data.stage in ['line', 'cards'])
+        && (!('stage' in request.resource.data) || request.resource.data.stage in ['line', 'pmi', 'cards'])
         && (!('hideNames' in request.resource.data) || request.resource.data.hideNames is bool)
         && validLabels(request.resource.data);
       allow delete: if isTeacher() && resource.data.ownerUid == request.auth.uid;
@@ -146,6 +147,37 @@ service cloud.firestore {
             && request.resource.data.likes.diff(resource.data.likes).affectedKeys().hasOnly([request.auth.uid])
             && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid] == true)
           );
+
+        allow delete: if isOwner(roomId);
+      }
+
+      // PMI 쪽지: 학생이 P(좋은 점)·M(나쁜 점)·I(흥미로운 점) 칸에 여러 장 붙인다.
+      // { uid, name, type: 'P'|'M'|'I', text, at, status: new|public|hidden }
+      match /pmi/{noteId} {
+        function isMember() {
+          return signedIn() && exists(/databases/$(database)/documents/rooms/$(roomId)/participants/$(request.auth.uid));
+        }
+
+        allow get, list: if isOwner(roomId)
+          || (signedIn() && resource.data.uid == request.auth.uid)
+          || (resource.data.status == 'public' && isMember());
+
+        allow create: if isMember()
+          && roomDoc(roomId).data.get('stage', 'line') == 'pmi'
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'type', 'text', 'at', 'status'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.name == get(/databases/$(database)/documents/rooms/$(roomId)/participants/$(request.auth.uid)).data.name
+          && request.resource.data.type in ['P', 'M', 'I']
+          && request.resource.data.text is string
+          && request.resource.data.text.trim().size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.at == request.time
+          && request.resource.data.status == 'new';
+
+        // 교사: 공개·숨김 상태만 바꾼다. 학생은 붙인 뒤 고칠 수 없다.
+        allow update: if isOwner(roomId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && request.resource.data.status in ['new', 'public', 'hidden'];
 
         allow delete: if isOwner(roomId);
       }

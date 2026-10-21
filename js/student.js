@@ -1,12 +1,13 @@
 import { app } from "./firebase.js";
 import {
   POSITIONS, esc, $, cleanName, confirmDialog, posStyle, cardColor, likeCount, toast,
+  PMI, PMI_TYPES, pmiStyle,
 } from "./common.js";
 import {
   initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, signInAnonymously, signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, updateDoc, serverTimestamp,
+  getFirestore, doc, getDoc, setDoc, addDoc, onSnapshot, runTransaction, updateDoc, serverTimestamp,
   collection, query, where, deleteField,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
@@ -26,6 +27,10 @@ const state = {
   myCard: null,      // 내 의견 카드
   wall: [],          // 공개된 카드들
   cardText: "",
+  myNotes: [],       // 내가 붙인 PMI 쪽지
+  pmiWall: [],       // 공개된 PMI 쪽지
+  pmiType: "P",      // 쓰고 있는 칸
+  pmiText: "",
 };
 
 // ---------- 입장 ----------
@@ -154,6 +159,17 @@ function enterRoom() {
     render();
   }, (ex) => console.error(ex));
 
+  const pmiCol = collection(db, "rooms", state.roomId, "pmi");
+  const byTime = (a, b) => (a.at?.toMillis?.() ?? Infinity) - (b.at?.toMillis?.() ?? Infinity);
+  onSnapshot(query(pmiCol, where("uid", "==", uid)), (snap) => {
+    state.myNotes = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort(byTime);
+    render();
+  }, (ex) => console.error(ex));
+  onSnapshot(query(pmiCol, where("status", "==", "public")), (snap) => {
+    state.pmiWall = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort(byTime);
+    render();
+  }, (ex) => console.error(ex));
+
   // 머리글의 "다른 이름으로 새로 들어가기" (한 기기를 여러 학생이 번갈아 쓸 때)
   $("#room-view").addEventListener("click", async (e) => {
     if (!e.target.closest("[data-switch]")) return;
@@ -188,6 +204,7 @@ function render() {
   const { room, me } = state;
   if (!room || !me || state.viewKey === "ended") return;
   if (room.stage === "cards") return renderCards();
+  if (room.stage === "pmi") return renderPmi();
   const round = room.round;
   const mine = me[`r${round}`];
   const key = [round, mine ? "done" : "todo", room.topic, room.leftLabel, room.rightLabel].join("|");
@@ -414,4 +431,119 @@ async function toggleLike(cardUid) {
     console.error(ex);
     toast("좋아요를 누르지 못했습니다.");
   }
+}
+
+// ---------- PMI ----------
+
+function renderPmi() {
+  const { room, me } = state;
+  const key = ["pmi", room.topic].join("|");
+  if (key !== state.viewKey) {
+    state.viewKey = key;
+    $("#room-view").innerHTML = `
+      <div class="board-head">
+        <span class="badge">PMI</span>
+        <h1 class="topic" style="margin-top:10px">${esc(room.topic)}</h1>
+        <div class="me">나: ${esc(me.name)} <button class="switch" data-switch>다른 이름으로 새로 들어가기</button></div>
+      </div>
+      <div class="card">
+        <p style="margin:0 0 10px;font-size:17px">어느 칸에 붙일까요?</p>
+        <div class="pmi-pick">
+          ${PMI_TYPES.map((t) => `
+            <button type="button" class="pmi-type" data-type="${t}" style="${pmiStyle(t)}">
+              <b>${t}</b><span>${PMI[t].ask}</span>
+            </button>`).join("")}
+        </div>
+        <label class="field" style="margin-top:14px">
+          <span id="pmi-label"></span>
+          <textarea id="pmi-text" style="min-height:90px"></textarea>
+        </label>
+        <button class="btn btn-primary btn-block" id="pmi-btn">쪽지 붙이기</button>
+        <p class="error" id="pmi-error"></p>
+        <p class="muted small" style="margin:6px 0 0">여러 장 붙일 수 있습니다. 붙인 쪽지는 고칠 수 없고, 선생님이 공개하면 친구들에게 보입니다.</p>
+      </div>
+      <h2 class="wall-title">내가 붙인 쪽지</h2>
+      <div class="pmi-mine" id="pmi-mine"></div>
+      <h2 class="wall-title">친구들의 PMI</h2>
+      <div id="pmi-wall"></div>`;
+
+    const ta = $("#pmi-text");
+    ta.value = state.pmiText;
+    ta.addEventListener("input", () => { state.pmiText = ta.value; syncPmiForm(); });
+    $("#room-view").querySelectorAll(".pmi-type").forEach((b) => b.addEventListener("click", () => {
+      state.pmiType = b.dataset.type;
+      syncPmiForm();
+      ta.focus();
+    }));
+    $("#pmi-btn").addEventListener("click", submitNote);
+    syncPmiForm();
+  }
+  drawPmiLists();
+}
+
+function syncPmiForm() {
+  const t = state.pmiType;
+  $("#room-view").querySelectorAll(".pmi-type").forEach((b) => b.classList.toggle("on", b.dataset.type === t));
+  $("#pmi-label").innerHTML = `<b style="color:${PMI[t].strong}">${t}</b> ${PMI[t].label} · ${PMI[t].ask}`;
+  $("#pmi-text").placeholder = { P: "이 주제의 좋은 점, 긍정적인 면", M: "이 주제의 나쁜 점, 부정적인 면", I: "좋고 나쁨을 떠나 흥미롭거나 궁금한 점" }[t];
+  $("#pmi-btn").disabled = state.sending || !state.pmiText.trim();
+}
+
+async function submitNote() {
+  const text = state.pmiText.trim();
+  if (!text) return;
+  state.sending = true;
+  syncPmiForm();
+  try {
+    await addDoc(collection(db, "rooms", state.roomId, "pmi"), {
+      uid: auth.currentUser.uid, name: state.me.name, type: state.pmiType, text,
+      at: serverTimestamp(), status: "new",
+    });
+    state.pmiText = "";
+    $("#pmi-text").value = "";
+    $("#pmi-error").textContent = "";
+    toast(`${state.pmiType} 칸에 쪽지를 붙였습니다.`);
+  } catch (ex) {
+    console.error(ex);
+    $("#pmi-error").textContent = "쪽지를 붙이지 못했습니다. 다시 시도해 주세요.";
+  } finally {
+    state.sending = false;
+    if ($("#pmi-btn")) syncPmiForm();
+  }
+}
+
+function noteHtml(n, { showName = true, tag = "" } = {}) {
+  return `
+    <div class="pmi-note" style="${pmiStyle(n.type)}">
+      <div class="pmi-note-head">
+        <span class="pmi-dot">${n.type}</span>
+        ${showName ? `<span class="pmi-name">${esc(n.name)}</span>` : ""}
+        ${tag ? `<span class="note-tag">${tag}</span>` : ""}
+      </div>
+      <div class="pmi-note-text">${esc(n.text)}</div>
+    </div>`;
+}
+
+function drawPmiLists() {
+  const mine = $("#pmi-mine");
+  const wall = $("#pmi-wall");
+  if (!mine || !wall) return;
+  const tag = { new: "공개 전", public: "공개됨", hidden: "숨김" };
+  mine.innerHTML = state.myNotes.length
+    ? state.myNotes.map((n) => noteHtml(n, { showName: false, tag: tag[n.status] })).join("")
+    : `<p class="wall-empty">아직 붙인 쪽지가 없습니다.</p>`;
+
+  const hide = !!state.room.hideNames;
+  if (!state.pmiWall.length) {
+    wall.innerHTML = `<p class="wall-empty">아직 공개된 쪽지가 없습니다.</p>`;
+    return;
+  }
+  wall.innerHTML = PMI_TYPES.map((t) => {
+    const notes = state.pmiWall.filter((n) => n.type === t);
+    return `
+      <section class="pmi-group" style="${pmiStyle(t)}">
+        <h3><span class="pmi-dot">${t}</span> ${PMI[t].label} <small>${PMI[t].ask}</small></h3>
+        ${notes.length ? notes.map((n) => noteHtml(n, { showName: !hide })).join("") : `<p class="wall-empty">아직 없습니다.</p>`}
+      </section>`;
+  }).join("");
 }
