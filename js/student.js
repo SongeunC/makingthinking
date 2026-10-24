@@ -214,7 +214,7 @@ function render() {
 
   const head = `
     <div class="board-head">
-      <span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>
+      <span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "2차" : "1차"}</span>
       <h1 class="topic" style="margin-top:10px">${esc(room.topic)}</h1>
       <div class="me">나: ${esc(me.name)} <button class="switch" data-switch>다른 이름으로 새로 들어가기</button></div>
     </div>`;

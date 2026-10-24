@@ -411,7 +411,7 @@ async function onRoomClick(e, s) {
     return copyLink(s.room.code);
   } else if (act === "again") {
     const ok = await confirmDialog({
-      title: "다시 생각(2차)을 시작할까요?",
+      title: "2차를 시작할까요?",
       body: "학생들이 수직선에서 다시 위치를 고르고 이유를 씁니다. 1차로 되돌릴 수 없습니다.",
       ok: "2차 시작",
     });
@@ -560,7 +560,7 @@ function draw(s) {
               <button class="btn ${s.allMode ? "on" : ""}" data-act="all">모두 보기</button>
               <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
               ${round === 1
-                ? `<button class="btn btn-primary" data-act="again">다시 생각</button>`
+                ? `<button class="btn btn-primary" data-act="again">2차 시작</button>`
                 : `<button class="btn ${s.showFirst ? "on" : ""}" data-act="first">1차 보기</button>`}
               <button class="btn" data-act="cloud">워드클라우드</button>
             ` : `
@@ -574,7 +574,7 @@ function draw(s) {
         <div class="t-title">
           ${cardStage ? `<span class="badge">의견 카드</span>`
             : pmiStage ? `<span class="badge">PMI</span>`
-            : `<span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "다시 생각 (2차)" : "1차"}</span>`}
+            : `<span class="badge ${round === 2 ? "r2" : ""}">${round === 2 ? "2차" : "1차"}</span>`}
           <h1>${esc(room.topic)}</h1>
         </div>
         <div class="qr-mini">
