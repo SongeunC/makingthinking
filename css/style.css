@@ -203,3 +203,8 @@ a { color: var(--accent); }
 .pmi-group h3 { color: var(--chalk); font-size: 20px; display: flex; align-items: center; gap: 8px; margin: 0 0 2px; }
 .pmi-group h3 small { color: var(--chalk-soft); font-size: 15px; }
 .pmi-group h3 .pmi-dot { width: 30px; height: 30px; font-size: 18px; }
+
+.tpl-hint {
+  margin: 0 0 8px; padding: 8px 12px; border-radius: 8px; background: #fff6d6; color: #6b5a12;
+  font-size: 15px; border-left: 4px solid var(--accent);
+}

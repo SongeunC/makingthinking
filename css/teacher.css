@@ -252,3 +252,11 @@
 .pmi-board .pmi-note.st-hidden { opacity: .4; filter: grayscale(.7); }
 .pmi-board .pmi-note.dim { opacity: .18; }
 @media (max-width: 900px) { .pmi-board { grid-template-columns: 1fr; } }
+
+/* 의견 카드 예시 문장 */
+.tpl-banner {
+  display: flex; gap: 12px; align-items: baseline; margin-bottom: 14px; padding: 10px 14px; cursor: pointer;
+  background: #fff6d6; color: #4a3f10; border-radius: 10px; border-left: 6px solid var(--accent);
+}
+.tpl-banner b { font-weight: 400; flex-shrink: 0; }
+.tpl-banner span { font-family: var(--font-text); white-space: pre-wrap; }

@@ -27,6 +27,7 @@ const state = {
   myCard: null,      // 내 의견 카드
   wall: [],          // 공개된 카드들
   cardText: "",
+  usedTemplate: "",  // 카드 칸에 마지막으로 채워 준 선생님 예시 문장
   myNotes: [],       // 내가 붙인 PMI 쪽지
   pmiWall: [],       // 공개된 PMI 쪽지
   pmiType: "P",      // 쓰고 있는 칸
@@ -317,7 +318,7 @@ async function submit() {
 
 function renderCards() {
   const { room, me, myCard } = state;
-  const key = ["cards", myCard ? `${myCard.status}:${likeCount(myCard)}` : "todo", room.topic].join("|");
+  const key = ["cards", myCard ? `${myCard.status}:${likeCount(myCard)}` : `todo:${room.cardTemplate ?? ""}`, room.topic].join("|");
   if (key !== state.viewKey) {
     state.viewKey = key;
     $("#room-view").innerHTML = `
@@ -354,10 +355,15 @@ function drawMyCard() {
       </div>`;
     return;
   }
+  // 선생님 예시 문장: 아직 안 썼거나 예시 그대로면 새 예시로 채운다(고쳐 쓰던 글은 건드리지 않음)
+  const tpl = (state.room.cardTemplate ?? "").trim();
+  if (!state.cardText.trim() || state.cardText === state.usedTemplate) state.cardText = tpl;
+  state.usedTemplate = tpl;
   box.innerHTML = `
     <div class="card">
       <label class="field">
         <span>토론을 마치며 내 생각을 써 주세요.</span>
+        ${tpl ? `<p class="tpl-hint">선생님이 예시 문장을 주셨어요. 문장을 고쳐서 내 생각으로 바꿔 써 주세요.</p>` : ""}
         <textarea id="card-text" placeholder="오늘 토론에서 새롭게 알게 된 점, 바뀐 생각, 하고 싶은 말">${esc(state.cardText)}</textarea>
       </label>
       <button class="btn btn-primary btn-block" id="card-btn">카드 내기</button>
@@ -370,6 +376,11 @@ function drawMyCard() {
   btn.addEventListener("click", async () => {
     const text = state.cardText.trim();
     if (!text) return;
+    if (tpl && text === tpl) {
+      $("#card-error").textContent = "예시 문장을 내 생각으로 고쳐 써 주세요.";
+      return;
+    }
+    $("#card-error").textContent = "";
     const ok = await confirmDialog({
       title: "이 내용으로 카드를 낼까요?",
       body: "낸 뒤에는 고칠 수 없습니다.",

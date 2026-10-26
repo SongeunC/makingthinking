@@ -9,7 +9,7 @@ rules_version = '2';
 //   rooms/{roomId}/names/{이름}            { uid }   같은 이름 중복 방지용
 //   rooms/{roomId}/cards/{uid}            { name, text, at, status, likes }   의견 카드
 //   rooms/{roomId}/pmi/{자동ID}           { uid, name, type, text, at, status }   PMI 쪽지
-//   rooms 의 선택 필드: stage('line'|'pmi'|'cards'), hideNames(bool)
+//   rooms 의 선택 필드: stage('line'|'pmi'|'cards'), hideNames(bool), cardTemplate(의견 카드 예시 문장)
 //
 // 교사: 구글 로그인. 학생: 익명 로그인(새로 들어올 때마다 새 uid).
 // 학생은 자기 participants 문서만 읽을 수 있다. 다른 학생의 선택·이유는 읽을 수 없다.
@@ -71,10 +71,12 @@ service cloud.firestore {
         && validLabels(request.resource.data);
       allow update: if isTeacher()
         && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['round', 'topic', 'leftLabel', 'rightLabel', 'stage', 'hideNames'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['round', 'topic', 'leftLabel', 'rightLabel', 'stage', 'hideNames', 'cardTemplate'])
         && request.resource.data.round in [1, 2]
         && (!('stage' in request.resource.data) || request.resource.data.stage in ['line', 'pmi', 'cards'])
         && (!('hideNames' in request.resource.data) || request.resource.data.hideNames is bool)
+        && (!('cardTemplate' in request.resource.data)
+            || (request.resource.data.cardTemplate is string && request.resource.data.cardTemplate.size() <= 1000))
         && validLabels(request.resource.data);
       allow delete: if isTeacher() && resource.data.ownerUid == request.auth.uid;
 

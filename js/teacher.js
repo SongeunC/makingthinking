@@ -379,6 +379,8 @@ async function onRoomClick(e, s) {
   } else if (act === "hide") {
     // 방에 저장해서 학생 카드 화면에도 함께 적용되고, 다시 열어도 그대로 남는다
     return roomUpdate(s, { hideNames: !s.room.hideNames });
+  } else if (act === "template") {
+    return editTemplate(s);
   } else if (act === "cloud") {
     s.view = "cloud";
     s.cloudSrc ??= { cards: "cards", pmi: "pmi" }[s.room.stage] ?? "reason";
@@ -448,6 +450,41 @@ async function removePerson(s, uid) {
   }
 }
 
+// 의견 카드 예시 문장: 저장하면 학생 카드 쓰는 칸에 미리 채워진다
+function editTemplate(s) {
+  const dlg = document.createElement("dialog");
+  dlg.className = "dlg";
+  dlg.innerHTML = `
+    <form method="dialog" style="padding:22px">
+      <h2>의견 카드 예시 문장</h2>
+      <p class="dlg-body" style="margin:0 0 10px">학생들의 카드 쓰는 칸에 이 문장이 미리 채워지고, 학생은 고쳐서 냅니다.
+        이미 고쳐 쓰고 있는 학생의 글은 바뀌지 않습니다.</p>
+      <textarea id="tpl-text" maxlength="1000" style="width:100%;min-height:120px;padding:12px;border:2px solid var(--line);border-radius:10px;font-size:17px;line-height:1.5"
+        placeholder="예: 나는 (     )라고 생각한다. 왜냐하면 (     ) 때문이다.">${esc(s.room.cardTemplate ?? "")}</textarea>
+      <div class="dlg-actions">
+        <button value="clear" class="btn">지우기</button>
+        <span style="flex:1"></span>
+        <button value="cancel" class="btn">취소</button>
+        <button value="save" class="btn btn-primary">저장</button>
+      </div>
+    </form>`;
+  document.body.appendChild(dlg);
+  const finish = async (v) => {
+    const text = dlg.querySelector("#tpl-text").value.trim();
+    if (dlg.open) dlg.close();
+    dlg.remove();
+    if (v !== "save" && v !== "clear") return;
+    const value = v === "save" ? text : "";
+    if (await roomUpdate(s, { cardTemplate: value })) {
+      toast(value ? "예시 문장을 학생들에게 보냈습니다." : "예시 문장을 지웠습니다.");
+    }
+  };
+  dlg.querySelector("form").addEventListener("submit", (e) => { e.preventDefault(); finish(e.submitter?.value); });
+  dlg.addEventListener("cancel", (e) => { e.preventDefault(); finish("cancel"); });
+  dlg.showModal();
+  dlg.querySelector("#tpl-text").focus();
+}
+
 const STAGES = [
   { id: "line", label: "가치수직선" },
   { id: "pmi", label: "PMI" },
@@ -474,14 +511,17 @@ function stageBar(s) {
     </button>`).join(`<span class="stage-arrow">›</span>`)}</nav>`;
 }
 
+// 방 정보를 바꾼다. 성공하면 true
 async function roomUpdate(s, data) {
   try {
     await updateDoc(doc(db, "rooms", s.roomId), data);
+    return true;
   } catch (ex) {
     console.error(ex);
     toast(ex.code === "permission-denied"
       ? "권한이 없어 바꾸지 못했습니다. Firebase 보안 규칙을 최신으로 게시했는지 확인해 주세요."
       : "바꾸지 못했습니다.");
+    return false;
   }
 }
 
@@ -566,6 +606,7 @@ function draw(s) {
             ` : `
               <button class="btn ${room.hideNames ? "on" : ""}" data-act="hide">이름 숨기기</button>
               <button class="btn btn-primary" data-act="puball">전체 공개</button>
+              ${cardStage ? `<button class="btn ${room.cardTemplate ? "on" : ""}" data-act="template">예시 문장</button>` : ""}
               <button class="btn" data-act="cloud">워드클라우드</button>
             `}
             <button class="btn ${s.manage ? "on" : ""}" data-act="manage">${s.manage ? "정리 끝" : "참여자 정리"}</button>
@@ -803,9 +844,12 @@ function saveExcluded(roomId, set) {
 
 // 의견 카드 벽(교사용). 모든 카드가 보이고, 공개 전·숨김 카드는 흐리게 표시한다.
 function cardWall(s) {
-  if (!s.cards.length) return `<p class="wall-empty">학생들이 카드를 내면 여기에 모입니다.</p>`;
+  const tpl = s.room.cardTemplate
+    ? `<div class="tpl-banner" data-act="template" title="눌러서 고치기"><b>예시 문장</b><span>${esc(s.room.cardTemplate)}</span></div>`
+    : "";
+  if (!s.cards.length) return `${tpl}<p class="wall-empty">학생들이 카드를 내면 여기에 모입니다.</p>`;
   const tag = { new: "공개 전", public: "공개됨", hidden: "숨김" };
-  return `<div class="wall t-wall">${s.cards.map((c) => `
+  return `${tpl}<div class="wall t-wall">${s.cards.map((c) => `
     <div class="note st-${c.status}" data-uid="${c.uid}" style="--note:${cardColor(c.uid)}">
       <div class="note-head">
         <span class="note-name">${esc(cardLabel(s, c))}</span>
